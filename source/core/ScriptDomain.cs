@@ -1678,14 +1678,14 @@ namespace SHVDN
                         // Resume script thread and execute any incoming tasks from it
                         SemaphoreSlim continueEvent = script.ContinueEvent;
                         SemaphoreSlim waitEvent = script.WaitEvent;
-                        SignalAndWait(continueEvent, waitEvent);
+                        SignalAndWaitWithHangWarning(script, continueEvent, waitEvent);
                         while (_taskQueue.Count > 0)
                         {
                             if (_taskQueue.TryDequeue(out IScriptTask poppedTask))
                             {
                                 poppedTask.Run();
                             }
-                            SignalAndWait(continueEvent, waitEvent);
+                            SignalAndWaitWithHangWarning(script, continueEvent, waitEvent);
                         }
                     }
                     else
@@ -1929,6 +1929,47 @@ namespace SHVDN
         {
             toSignal.Release();
             toWaitOn.Wait();
+        }
+
+        // StreamEmber: first warning after this long without the script yielding, then every RepeatMs.
+        private const int HangWarningFirstMs = 5000;
+        private const int HangWarningRepeatMs = 30000;
+
+        /// <summary>
+        /// StreamEmber: same as <see cref="SignalAndWait"/>, but logs a warning while a script keeps the game frozen.
+        /// It deliberately does NOT abort the script: upstream removed termination during a loop (af2b8cc5) because
+        /// aborting a script in the middle of a native call can crash the game. This only makes freezes diagnosable.
+        /// </summary>
+        private static void SignalAndWaitWithHangWarning(Script script, SemaphoreSlim toSignal, SemaphoreSlim toWaitOn)
+        {
+            toSignal.Release();
+            if (toWaitOn.Wait(HangWarningFirstMs))
+            {
+                return;
+            }
+
+            // A debugger may be paused on a breakpoint; just keep waiting without warnings
+            bool warn = !IsDebuggerPresent();
+            long waitedMs = HangWarningFirstMs;
+            if (warn)
+            {
+                Log.Message(Log.Level.Warning, $"Script {script.Name} (file name: {Path.GetFileName(script.Filename)}) has not yielded for {waitedMs / 1000} s, so the game is frozen. " +
+                    "Loops in scripts must call Script.Yield() or Script.Wait(). SHVDN cannot abort a running script safely.");
+            }
+
+            while (!toWaitOn.Wait(HangWarningRepeatMs))
+            {
+                waitedMs += HangWarningRepeatMs;
+                if (warn)
+                {
+                    Log.Message(Log.Level.Warning, $"Script {script.Name} still has not yielded ({waitedMs / 1000} s).");
+                }
+            }
+
+            if (warn)
+            {
+                Log.Message(Log.Level.Warning, $"Script {script.Name} yielded again after more than {waitedMs / 1000} s.");
+            }
         }
 
         private static bool IsSubclassOf(Type type, string baseTypeName)

@@ -665,17 +665,52 @@ static void ScriptHookVDotNet_ManagedInit()
     }
 }
 
+// StreamEmber: number of managed exceptions that reached the tick boundary (used to throttle logging)
+static int sManagedTickErrorCount = 0;
+
+static void LogManagedTickError(String^ where, Exception^ ex)
+{
+    // Log the first 10 errors, then every 1000th one, so a persistent error cannot flood the log every frame
+    sManagedTickErrorCount++;
+    if (sManagedTickErrorCount <= 10 || (sManagedTickErrorCount % 1000) == 0)
+    {
+        SHVDN::Log::Message(SHVDN::Log::Level::Error, where,
+            " threw an exception (error #", System::Convert::ToString(sManagedTickErrorCount), "): ", ex->ToString());
+    }
+}
+
 static void ScriptHookVDotNet_ManagedTick()
 {
     msclr::lock l(ScriptHookVDotNet::variablesLockForMainDomain);
 
+    // StreamEmber: this function is called from the unmanaged CLR thread procedure. Upstream had no try/catch here,
+    // so any managed exception escaping `DoTick` ended the game process. Catch and log it instead, separately for
+    // the console and the script domain so one failing does not stop the other.
     SHVDN::Console^ console = ScriptHookVDotNet::console;
     if (console != nullptr)
-        console->DoTick();
+    {
+        try
+        {
+            console->DoTick();
+        }
+        catch (Exception^ ex)
+        {
+            LogManagedTickError("Console tick", ex);
+        }
+    }
 
     SHVDN::ScriptDomain^ scriptDomain = ScriptHookVDotNet::domain;
     if (scriptDomain != nullptr)
-        scriptDomain->DoTick();
+    {
+        try
+        {
+            scriptDomain->DoTick();
+        }
+        catch (Exception^ ex)
+        {
+            LogManagedTickError("Script domain tick", ex);
+        }
+    }
 }
 
 static bool AreAllKeysPressed(array<WinForms::Keys>^ keys)
@@ -783,6 +818,7 @@ static int EmptyClrMethodForEagerClrDllLoading()
 #pragma unmanaged
 
 #include <Main.h>
+#include <wchar.h>
 
 std::atomic<HANDLE> hClrThread;
 std::atomic<HANDLE> hClrWaitEvent{ nullptr };
@@ -895,11 +931,68 @@ static void ScriptKeyboardMessage(DWORD key, WORD repeats, BYTE scanCode, BOOL i
         isWithAlt != FALSE);
 }
 
+// StreamEmber: SHVDN only supports GTA V Legacy (GTA5.exe). Its memory patterns do not match GTA V Enhanced
+// (GTA5_Enhanced.exe), where loading it would crash the game, so stay inactive there.
+static bool sDisabledForUnsupportedGame = false;
+
+static bool IsRunningInGtaVEnhanced()
+{
+    wchar_t exePath[MAX_PATH];
+    const DWORD len = GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH)
+    {
+        return false;
+    }
+
+    const wchar_t* exeName = wcsrchr(exePath, L'\\');
+    exeName = (exeName != nullptr) ? exeName + 1 : exePath;
+    return _wcsicmp(exeName, L"GTA5_Enhanced.exe") == 0;
+}
+
+// Appends one line to ScriptHookVDotNet.log next to the asi. Only kernel32 calls, so it is safe in DllMain.
+static void WriteUnsupportedGameLogLine(HMODULE hModule)
+{
+    wchar_t logPath[MAX_PATH];
+    const DWORD len = GetModuleFileNameW(hModule, logPath, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH)
+    {
+        return;
+    }
+
+    wchar_t* ext = wcsrchr(logPath, L'.');
+    if (ext == nullptr || (MAX_PATH - (ext - logPath)) < 5)
+    {
+        return;
+    }
+    wcscpy_s(ext, MAX_PATH - (ext - logPath), L".log");
+
+    const HANDLE file = CreateFileW(logPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        return;
+    }
+
+    const char message[] = "[ERROR] ScriptHookVDotNet is disabled: GTA V Enhanced (GTA5_Enhanced.exe) is not supported. "
+        "Use GTA V Legacy (GTA5.exe).\r\n";
+    DWORD written = 0;
+    WriteFile(file, message, sizeof(message) - 1, &written, NULL);
+    CloseHandle(file);
+}
+
 BOOL WINAPI DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpvReserved)
 {
     switch (fdwReason)
     {
     case DLL_PROCESS_ATTACH:
+        if (IsRunningInGtaVEnhanced())
+        {
+            sDisabledForUnsupportedGame = true;
+            OutputDebugStringW(L"ScriptHookVDotNet: GTA V Enhanced is not supported, staying inactive.\n");
+            WriteUnsupportedGameLogLine(hModule);
+            break;
+        }
+
         hClrContinueEvent.store(CreateEvent(NULL, false, false, NULL), std::memory_order_relaxed);
         hClrWaitEvent.store(CreateEvent(NULL, false, false, NULL), std::memory_order_relaxed);
         sClrEventsInitialized.store(true, std::memory_order_release);
@@ -922,6 +1015,12 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD fdwReason, LPVOID lpvReserved)
         hClrThread.store(CreateThread(NULL, NULL, ClrThreadProc, NULL, NULL, NULL), std::memory_order_release);
         break;
     case DLL_PROCESS_DETACH:
+        if (sDisabledForUnsupportedGame)
+        {
+            // Nothing was registered or created in DLL_PROCESS_ATTACH
+            break;
+        }
+
         sClrThreadRequestedToExit.store(true, std::memory_order_relaxed);
 
         // Gracefully let the CLR thread procedure and the script fiber exit (CloseHandle does not set events)

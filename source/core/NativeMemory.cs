@@ -376,7 +376,10 @@ namespace SHVDN
             address = MemScanner.FindPatternBmh("\x80\x3D\x00\x00\x00\x00\x00\x8B\xDA\x75\x29\x48\x8B\xD1\x33\xC9\xE8", "xx????xxxxxxxxxxx");
             if (address != null)
             {
-                s_isDecoratorLocked = Rel32<byte>(address, 3, instructionTail: 5);
+                // `80 3D <disp32> <imm8>` (cmp byte ptr [rip+disp32], imm8): disp32 is at +2 and the next
+                // instruction starts at +7, so the tail after disp32 is 1 (imm8) + 4 (disp32) = 5.
+                // StreamEmber fix: upstream 92c6925a reads disp32 at +3, which resolves to a wrong address.
+                s_isDecoratorLocked = Rel32<byte>(address, 2, instructionTail: 5);
             }
 
             address = MemScanner.FindPatternBmh("\xF3\x0F\x10\x5C\x24\x20\xF3\x0F\x10\x54\x24\x24\xF3\x0F\x59\xD9\xF3\x0F\x59\xD1\xF3\x0F\x10\x44\x24\x28\xF3\x0F\x11\x1F", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
@@ -538,20 +541,32 @@ namespace SHVDN
             {
                 s_weaponComponentArrayCountAddr = Rel32<uint>(address, 0x2);
 
-                address = MemScanner.FindPatternNaive("\x46\x8D\x04\x11\x48\x8D\x15\x00\x00\x00\x00\x41\xD1\xF8", "xxxxxxx????xxx", new IntPtr(address));
-                s_offsetForCWeaponComponentArrayAddr = (ulong)(address + 7);
+                // StreamEmber: each chained search below depends on the previous match. Upstream dereferenced every
+                // result without a null check, so one missed pattern threw inside the static constructor and broke
+                // the whole NativeMemory class. Stop the chain at the first miss instead.
+                do
+                {
+                    address = MemScanner.FindPatternNaive("\x46\x8D\x04\x11\x48\x8D\x15\x00\x00\x00\x00\x41\xD1\xF8", "xxxxxxx????xxx", new IntPtr(address));
+                    if (address == null) break;
+                    s_offsetForCWeaponComponentArrayAddr = (ulong)(address + 7);
 
-                address = MemScanner.FindPatternNaive("\x74\x10\x49\x8B\xC9\xE8", "xxxxxx", new IntPtr(address));
-                var findAttachPointFuncAddr = new IntPtr(Rel32(address, 6));
+                    address = MemScanner.FindPatternNaive("\x74\x10\x49\x8B\xC9\xE8", "xxxxxx", new IntPtr(address));
+                    if (address == null) break;
+                    var findAttachPointFuncAddr = new IntPtr(Rel32(address, 6));
 
-                address = MemScanner.FindPatternNaive("\x4C\x8D\x81", "xxx", findAttachPointFuncAddr);
-                s_weaponAttachPointsStartOffset = *(int*)(address + 3);
-                address = MemScanner.FindPatternNaive("\x4D\x63\x98", "xxx", new IntPtr(address));
-                s_weaponAttachPointsArrayCountOffset = *(int*)(address + 3);
-                address = MemScanner.FindPatternNaive("\x4C\x63\x50", "xxx", new IntPtr(address));
-                s_weaponAttachPointElementComponentCountOffset = *(byte*)(address + 3);
-                address = MemScanner.FindPatternNaive("\x48\x83\xC0", "xxx", new IntPtr(address));
-                s_weaponAttachPointElementSize = *(byte*)(address + 3);
+                    address = MemScanner.FindPatternNaive("\x4C\x8D\x81", "xxx", findAttachPointFuncAddr);
+                    if (address == null) break;
+                    s_weaponAttachPointsStartOffset = *(int*)(address + 3);
+                    address = MemScanner.FindPatternNaive("\x4D\x63\x98", "xxx", new IntPtr(address));
+                    if (address == null) break;
+                    s_weaponAttachPointsArrayCountOffset = *(int*)(address + 3);
+                    address = MemScanner.FindPatternNaive("\x4C\x63\x50", "xxx", new IntPtr(address));
+                    if (address == null) break;
+                    s_weaponAttachPointElementComponentCountOffset = *(byte*)(address + 3);
+                    address = MemScanner.FindPatternNaive("\x48\x83\xC0", "xxx", new IntPtr(address));
+                    if (address == null) break;
+                    s_weaponAttachPointElementSize = *(byte*)(address + 3);
+                } while (false);
             }
 
             address = MemScanner.FindPatternBmh("\x24\x1F\x3C\x05\x0F\x85\x00\x00\x00\x00\x48\x8D\x82\x00\x00\x00\x00\x48\x8D\xB2\x00\x00\x00\x00\x48\x85\xC0\x74\x09\x80\x38\x00\x74\x04\x8A\xCB", "xxxxxx????xxx????xxx????xxxxxxxxxxxx");
@@ -767,12 +782,31 @@ namespace SHVDN
 
                 s_phMaterialMgrInstance = *(IntPtr*)Rel32(address, -4);
 
-                IntPtr vtable = *(IntPtr*)s_phMaterialMgrInstance;
-                s_getMaterialNameFunc = (delegate* unmanaged[Stdcall]<IntPtr, uint, byte*, int, void>)(*(IntPtr*)(vtable + getMaterialNameFuncOffset));
+                // StreamEmber: the material manager instance may not exist yet; dereferencing 0 here would throw in
+                // the static constructor and disable every NativeMemory feature.
+                if (s_phMaterialMgrInstance != IntPtr.Zero)
+                {
+                    IntPtr vtable = *(IntPtr*)s_phMaterialMgrInstance;
+                    if (vtable != IntPtr.Zero)
+                    {
+                        s_getMaterialNameFunc = (delegate* unmanaged[Stdcall]<IntPtr, uint, byte*, int, void>)(*(IntPtr*)(vtable + getMaterialNameFuncOffset));
+                    }
+                }
             }
 
             // Nopping this enables to spawn some drawable objects without a dedicated collision (e.g. prop_fan_palm_01a)
-            address = MemScanner.FindPatternBmh("\x74\x00\x00\x00\x00\x74\x00\xe8\x00\x00\x00\x00\x48\x85\xc0\x75\x00\x38\x00\x00\x0f\x84\x00\x00\x00\x00\x48\x8d\x4d\x00\xe8\x00\x00\x00\x00\x66\x89\x45\x00\x8b\x45\x00\x8b\xc8\x33\x4d", "x????x?x????xxxx?x??xx????xxx?x????xxx?xx?xxxx");
+            // StreamEmber: this permanently patches game code through a heavily wildcarded pattern. On a game build
+            // we have not verified, a false match would corrupt unrelated code, so only patch known builds.
+            int gameVersionForCodePatch = GetGameVersion();
+            address = null;
+            if (gameVersionForCodePatch >= 0 && gameVersionForCodePatch <= NewestVerifiedGameVersionId)
+            {
+                address = MemScanner.FindPatternBmh("\x74\x00\x00\x00\x00\x74\x00\xe8\x00\x00\x00\x00\x48\x85\xc0\x75\x00\x38\x00\x00\x0f\x84\x00\x00\x00\x00\x48\x8d\x4d\x00\xe8\x00\x00\x00\x00\x66\x89\x45\x00\x8b\x45\x00\x8b\xc8\x33\x4d", "x????x?x????xxxx?x??xx????xxx?x????xxx?xx?xxxx");
+            }
+            else
+            {
+                Log.Message(Log.Level.Warning, $"Skipped the collision-less prop code patch: game version id {gameVersionForCodePatch} is newer than the newest verified one ({NewestVerifiedGameVersionId}).");
+            }
             if (address != null)
             {
                 address = MemScanner.FindPatternNaive("\x25\xff\xff\xff\x3f", "xxxxx", new IntPtr(address + 0x2E), 0x7c);
@@ -856,7 +890,12 @@ namespace SHVDN
                                         vehicleTypeInt += 2;
                                     }
 
-                                    vehicleHashesGroupedByType[vehicleTypeInt].Add(cur->Hash);
+                                    // StreamEmber: a wrong offset (pattern miss) would index out of range and abort the
+                                    // whole static constructor, so skip unexpected values instead.
+                                    if ((uint)vehicleTypeInt < (uint)vehicleHashesGroupedByType.Length)
+                                    {
+                                        vehicleHashesGroupedByType[vehicleTypeInt].Add(cur->Hash);
+                                    }
 
                                     break;
                                 case ModelInfoType.Ped:
@@ -1046,6 +1085,7 @@ namespace SHVDN
 
             if (oldFwRegdRef != IntPtr.Zero)
             {
+                if (s_fwRefAwareBaseImpl__RemoveKnownRef == null) ThrowGameFunctionNotFound(nameof(s_fwRefAwareBaseImpl__RemoveKnownRef));
                 s_fwRefAwareBaseImpl__RemoveKnownRef(oldFwRegdRef, lhs);
             }
 
@@ -1054,6 +1094,7 @@ namespace SHVDN
             IntPtr newFwRegdRef = (IntPtr)(*(long*)(lhs));
             if (newFwRegdRef != IntPtr.Zero)
             {
+                if (s_fwRefAwareBaseImpl__AddKnownRef == null) ThrowGameFunctionNotFound(nameof(s_fwRefAwareBaseImpl__AddKnownRef));
                 s_fwRefAwareBaseImpl__AddKnownRef(newFwRegdRef, lhs);
             }
         }
@@ -1098,7 +1139,13 @@ namespace SHVDN
         private static ulong* s_gameplayCameraAddress;
 
         public static bool IsCameraInAccurateMode
-            => s_isCameraInAccurateMode() != 0;
+        {
+            get
+            {
+                if (s_isCameraInAccurateMode == null) ThrowGameFunctionNotFound(nameof(s_isCameraInAccurateMode));
+                return s_isCameraInAccurateMode() != 0;
+            }
+        }
 
         public static IntPtr GetCameraAddress(int handle)
         {
@@ -1125,6 +1172,7 @@ namespace SHVDN
 
         public static string GetGxtEntryByHash(int entryLabelHash)
         {
+            if (s_getLabelTextByHashFunc == null) ThrowGameFunctionNotFound(nameof(s_getLabelTextByHashFunc));
             char* entryText = (char*)s_getLabelTextByHashFunc(s_getLabelTextByHashAddress, entryLabelHash);
             return entryText != null ? StringMarshal.PtrToStringUtf8(new IntPtr(entryText)) : string.Empty;
         }
@@ -1137,8 +1185,16 @@ namespace SHVDN
 
         public static bool IsDecoratorLocked
         {
-            get => *s_isDecoratorLocked != 0;
-            set => *s_isDecoratorLocked = (byte)(value ? 1 : 0);
+            get
+            {
+                if (s_isDecoratorLocked == null) ThrowGameFunctionNotFound(nameof(s_isDecoratorLocked));
+                return *s_isDecoratorLocked != 0;
+            }
+            set
+            {
+                if (s_isDecoratorLocked == null) ThrowGameFunctionNotFound(nameof(s_isDecoratorLocked));
+                *s_isDecoratorLocked = (byte)(value ? 1 : 0);
+            }
         }
 
         #endregion
@@ -1212,6 +1268,7 @@ namespace SHVDN
         {
             byte* buf = stackalloc byte[128];
 
+            if (s_getMaterialNameFunc == null) ThrowGameFunctionNotFound(nameof(s_getMaterialNameFunc));
             s_getMaterialNameFunc(s_phMaterialMgrInstance, (uint)(materialId & 0xFF), buf, 128);
 
             return MemDataMarshal.ReadString(new IntPtr(buf));
@@ -1397,6 +1454,7 @@ namespace SHVDN
 
         public static void GetRotationFromMatrix(float* returnRotationArray, IntPtr matrixAddress, int rotationOrder = 2)
         {
+            if (s_getRotationFromMatrixFunc == null) ThrowGameFunctionNotFound(nameof(s_getRotationFromMatrixFunc));
             s_getRotationFromMatrixFunc(returnRotationArray, (ulong)matrixAddress.ToInt64(), rotationOrder);
 
             const float Rad2Deg = 57.2957763671875f; // 0x42652EE0 in hex. Exactly the same value as the GET_ENTITY_ROTATION multiplies the rotation values in radian by.
@@ -1406,6 +1464,7 @@ namespace SHVDN
         }
         public static void GetQuaternionFromMatrix(float* returnRotationArray, IntPtr matrixAddress)
         {
+            if (s_getQuaternionFromMatrixFunc == null) ThrowGameFunctionNotFound(nameof(s_getQuaternionFromMatrixFunc));
             s_getQuaternionFromMatrixFunc(returnRotationArray, (ulong)matrixAddress.ToInt64());
         }
 
@@ -2282,7 +2341,11 @@ namespace SHVDN
 
             public static int ShouldShowOnlyVehicleTiresWithPositiveHealthOffset { get; }
 
-            public static void FixVehicleWheel(IntPtr wheelAddress) => s_fixVehicleWheelFunc(wheelAddress);
+            public static void FixVehicleWheel(IntPtr wheelAddress)
+            {
+                if (s_fixVehicleWheelFunc == null) ThrowGameFunctionNotFound(nameof(s_fixVehicleWheelFunc));
+                s_fixVehicleWheelFunc(wheelAddress);
+            }
 
             public static IntPtr GetVehicleWheelAddressByIndexOfWheelArray(IntPtr vehicleAddress, int index)
             {
@@ -2376,17 +2439,21 @@ namespace SHVDN
 
                     if (VehicleWheelHasVehiclePtr())
                     {
+                        if (s_punctureVehicleTireNewFunc == null) ThrowGameFunctionNotFound(nameof(s_punctureVehicleTireNewFunc));
                         s_punctureVehicleTireNewFunc(_wheelAddress, 0, _damage, (ulong)&outValInt, (ulong)&outValFloat, 3, 0, true);
                         if (_burstWheelCompletely)
                         {
+                            if (s_burstVehicleTireOnRimNewFunc == null) ThrowGameFunctionNotFound(nameof(s_burstVehicleTireOnRimNewFunc));
                             s_burstVehicleTireOnRimNewFunc(_wheelAddress);
                         }
                     }
                     else
                     {
+                        if (s_punctureVehicleTireOldFunc == null) ThrowGameFunctionNotFound(nameof(s_punctureVehicleTireOldFunc));
                         s_punctureVehicleTireOldFunc(_wheelAddress, 0, _damage, _vehicleAddress, (ulong)&outValInt, (ulong)&outValFloat, 3, 0, true);
                         if (_burstWheelCompletely)
                         {
+                            if (s_burstVehicleTireOnRimOldFunc == null) ThrowGameFunctionNotFound(nameof(s_burstVehicleTireOnRimOldFunc));
                             s_burstVehicleTireOnRimOldFunc(_wheelAddress, _vehicleAddress);
                         }
                     }
@@ -3044,6 +3111,7 @@ namespace SHVDN
                     return;
                 }
 
+                if (s_audSpeechAudioEntity__SetAmbientVoiceNameFunc == null) ThrowGameFunctionNotFound(nameof(s_audSpeechAudioEntity__SetAmbientVoiceNameFunc));
                 s_audSpeechAudioEntity__SetAmbientVoiceNameFunc(audSpeechAudioEntityAddress, hash, true);
             }
 
@@ -3114,6 +3182,7 @@ namespace SHVDN
                 int variationOverride = variation;
                 FVector3 origin = nullSpeakerPosition;
 
+                if (s_audSpeechAudioEntity__SayFunc == null) ThrowGameFunctionNotFound(nameof(s_audSpeechAudioEntity__SayFunc));
                 return s_audSpeechAudioEntity__SayFunc(audSpeechAudioEntityAddress, contextHash, speechParamsPtr, voicePHash, preDelay, IntPtr.Zero, replyingContext, replyingDelay, replayProbability, FromScript, &variationOverride, &origin);
             }
             #endregion
@@ -3144,11 +3213,15 @@ namespace SHVDN
             {
                 resolutionResult = new Size(*s_uiWidthAddr, *s_uiHeightAddr);
 
+                if (s_updateMonitorConfigurationFunc == null) ThrowGameFunctionNotFound(nameof(s_updateMonitorConfigurationFunc));
                 IntPtr generalScreenInfoAddr = s_updateMonitorConfigurationFunc(s_grcDeviceAddr);
+                if (s_isMultiheadFunc == null) ThrowGameFunctionNotFound(nameof(s_isMultiheadFunc));
                 if (s_isMultiheadFunc(generalScreenInfoAddr))
                 {
                     // A lot of functions call this function twice for some reason, so we call it twice for safely
+                    if (s_updateMonitorConfigurationFunc == null) ThrowGameFunctionNotFound(nameof(s_updateMonitorConfigurationFunc));
                     generalScreenInfoAddr = s_updateMonitorConfigurationFunc(s_grcDeviceAddr);
+                    if (s_getLandscapeMonitorFunc == null) ThrowGameFunctionNotFound(nameof(s_getLandscapeMonitorFunc));
                     GridMonitor* screenInfoAddr = s_getLandscapeMonitorFunc(generalScreenInfoAddr);
 
                     resolutionResult = new Size(
@@ -3481,10 +3554,12 @@ namespace SHVDN
             }
 
             int handlingIndex = *(int*)(modelInfo + s_handlingIndexOffsetInModelInfo).ToPointer();
+            if (s_getHandlingDataByIndex == null) ThrowGameFunctionNotFound(nameof(s_getHandlingDataByIndex));
             return new IntPtr((long)s_getHandlingDataByIndex(handlingIndex));
         }
         public static IntPtr GetHandlingDataByHandlingNameHash(int handlingNameHash)
         {
+            if (s_getHandlingDataByHash == null) ThrowGameFunctionNotFound(nameof(s_getHandlingDataByHash));
             return new IntPtr((long)s_getHandlingDataByHash(new IntPtr(&handlingNameHash)));
         }
 
@@ -3700,6 +3775,7 @@ namespace SHVDN
                         continue;
                     }
 
+                    if (NativeMemory.s_createGuid == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_createGuid));
                     int createdHandle = NativeMemory.s_createGuid(address);
                     resultList.Add(createdHandle);
                 }
@@ -3736,6 +3812,7 @@ namespace SHVDN
                         continue;
                     }
 
+                    if (NativeMemory.s_createGuid == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_createGuid));
                     int createdHandle = NativeMemory.s_createGuid(address);
                     resultList.Add(createdHandle);
                 }
@@ -3781,6 +3858,7 @@ namespace SHVDN
                         continue;
                     }
 
+                    if (NativeMemory.s_createGuid == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_createGuid));
                     int createdHandle = NativeMemory.s_createGuid(entityAddress);
                     resultList.Add(createdHandle);
                 }
@@ -3792,6 +3870,7 @@ namespace SHVDN
             {
                 float* entityPosition = stackalloc float[4];
 
+                if (NativeMemory.s_entityPosFunc == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_entityPosFunc));
                 NativeMemory.s_entityPosFunc(address, entityPosition);
 
                 float x = position.X - entityPosition[0];
@@ -3833,6 +3912,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (NativeMemory.s_createGuid == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_createGuid));
                 _returnEntityHandle = NativeMemory.s_createGuid(_entityAddress);
             }
         }
@@ -4245,6 +4325,7 @@ namespace SHVDN
 
                 ulong address = pool->GetAddress(i);
 
+                if (NativeMemory.s_entityPosFunc == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_entityPosFunc));
                 NativeMemory.s_entityPosFunc(address, entityPosition);
                 float x = entityPosition[0] - position.X;
                 float y = entityPosition[1] - position.Y;
@@ -4493,6 +4574,7 @@ namespace SHVDN
                     return IntPtr.Zero;
                 }
 
+                if (s_getSpecialAbilityAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getSpecialAbilityAddressFunc));
                 return s_getSpecialAbilityAddressFunc(playerPedAddress, 0);
             }
             else
@@ -4519,6 +4601,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_activateSpecialAbilityFunc == null) ThrowGameFunctionNotFound(nameof(s_activateSpecialAbilityFunc));
                 s_activateSpecialAbilityFunc(_specialAbilityStructAddress);
             }
         }
@@ -5179,6 +5262,7 @@ namespace SHVDN
 
         public static void SetBlipSecondaryColor(int handle, uint argb)
         {
+            if (s_setBlipParameterFunc_Color32 == null) ThrowGameFunctionNotFound(nameof(s_setBlipParameterFunc_Color32));
             s_setBlipParameterFunc_Color32(7, handle, argb);
         }
 
@@ -5200,6 +5284,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_getCGameScriptHandlerAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getCGameScriptHandlerAddressFunc));
                 ulong cGameScriptHandlerAddress = s_getCGameScriptHandlerAddressFunc();
 
                 if (cGameScriptHandlerAddress == 0)
@@ -5246,6 +5331,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_getCGameScriptHandlerAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getCGameScriptHandlerAddressFunc));
                 ulong cGameScriptHandlerAddress = s_getCGameScriptHandlerAddressFunc();
 
                 if (cGameScriptHandlerAddress == 0)
@@ -5283,6 +5369,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_getCGameScriptHandlerAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getCGameScriptHandlerAddressFunc));
                 ulong cGameScriptHandlerAddress = s_getCGameScriptHandlerAddressFunc();
 
                 if (cGameScriptHandlerAddress == 0)
@@ -5366,6 +5453,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_getCGameScriptHandlerAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getCGameScriptHandlerAddressFunc));
                 ulong cGameScriptHandlerAddress = s_getCGameScriptHandlerAddressFunc();
 
                 if (cGameScriptHandlerAddress == 0)
@@ -5413,6 +5501,7 @@ namespace SHVDN
             }
 
             int playerPedModelHash = 0;
+            if (s_getLocalPlayerPedAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getLocalPlayerPedAddressFunc));
             ulong playerPedAddress = s_getLocalPlayerPedAddressFunc();
 
             if (playerPedAddress != 0)
@@ -5444,10 +5533,12 @@ namespace SHVDN
 
         public static IntPtr GetPtfxAddress(int handle)
         {
+            if (s_getPtfxAddressFunc == null) ThrowGameFunctionNotFound(nameof(s_getPtfxAddressFunc));
             return new IntPtr((long)s_getPtfxAddressFunc(handle));
         }
         public static IntPtr GetEntityAddress(int handle)
         {
+            if (s_getScriptEntity == null) ThrowGameFunctionNotFound(nameof(s_getScriptEntity));
             return new IntPtr((long)s_getScriptEntity(handle));
         }
 
@@ -5646,6 +5737,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_explodeProjectileFunc == null) ThrowGameFunctionNotFound(nameof(s_explodeProjectileFunc));
                 s_explodeProjectileFunc(_projectileAddress, 0);
             }
         }
@@ -5827,6 +5919,12 @@ namespace SHVDN
 
         private static WeaponComponentInfo* FindWeaponComponentInfo(uint nameHash)
         {
+            // StreamEmber: the address is 0 when its pattern chain was not found
+            if (s_offsetForCWeaponComponentArrayAddr == 0)
+            {
+                return null;
+            }
+
             ulong* cWeaponComponentArrayFirstPtr = (ulong*)((byte*)s_offsetForCWeaponComponentArrayAddr + 4 + *(int*)s_offsetForCWeaponComponentArrayAddr);
             uint arrayCount = s_weaponComponentArrayCountAddr != null ? *(uint*)s_weaponComponentArrayCountAddr : 0;
             if (cWeaponComponentArrayFirstPtr == null || arrayCount == 0)
@@ -5868,7 +5966,8 @@ namespace SHVDN
         {
             CItemInfo* weaponInfo = FindWeaponInfo(weaponHash);
 
-            if (weaponInfo == null)
+            // StreamEmber: the element size is 0 when its pattern chain was not found
+            if (weaponInfo == null || s_weaponAttachPointElementSize == 0)
             {
                 return 0xFFFFFFFF;
             }
@@ -5938,6 +6037,12 @@ namespace SHVDN
 
         public static List<uint> GetAllWeaponComponentHashes()
         {
+            // StreamEmber: the address is 0 when its pattern chain was not found
+            if (s_offsetForCWeaponComponentArrayAddr == 0)
+            {
+                return new List<uint>();
+            }
+
             ulong* cWeaponComponentArrayFirstPtr = (ulong*)((byte*)s_offsetForCWeaponComponentArrayAddr + 4 + *(int*)s_offsetForCWeaponComponentArrayAddr);
             uint arrayCount = s_weaponComponentArrayCountAddr != null ? *(uint*)s_weaponComponentArrayCountAddr : 0;
             var resultList = new List<uint>();
@@ -5956,7 +6061,8 @@ namespace SHVDN
         {
             CItemInfo* weaponInfo = FindWeaponInfo(weaponHash);
 
-            if (weaponInfo == null)
+            // StreamEmber: the element size is 0 when its pattern chain was not found
+            if (weaponInfo == null || s_weaponAttachPointElementSize == 0)
             {
                 return new List<uint>();
             }
@@ -6037,6 +6143,7 @@ namespace SHVDN
 
             public void Run()
             {
+                if (s_fragInst__BreakOffAboveFunc == null) ThrowGameFunctionNotFound(nameof(s_fragInst__BreakOffAboveFunc));
                 _wasNewFragInstCreated = s_fragInst__BreakOffAboveFunc(_fragInst, _componentIndex) != null;
             }
         }
@@ -6269,6 +6376,7 @@ namespace SHVDN
 
             ulong pedIntelligenceAddr = *(ulong*)(pedAddress + Ped.PedIntelligenceOffset);
 
+            if (s_getActiveTaskFunc == null) ThrowGameFunctionNotFound(nameof(s_getActiveTaskFunc));
             CTask* activeTask = s_getActiveTaskFunc(*(ulong*)((byte*)pedIntelligenceAddr + Ped.CTaskTreePedOffset));
             if (activeTask != null && activeTask->TaskType == s_cTaskNmScriptControlTypeIndex)
             {
@@ -6320,15 +6428,18 @@ namespace SHVDN
                     if (argType == typeof(float))
                     {
                         float argValueConverted = *(float*)(&argValue);
+                        if (NativeMemory.s_setNmParameterFloat == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_setNmParameterFloat));
                         NativeMemory.s_setNmParameterFloat(messageMemory, name, argValueConverted);
                     }
                     else if (argType == typeof(bool))
                     {
                         bool argValueConverted = argValue != 0 ? true : false;
+                        if (NativeMemory.s_setNmParameterBool == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_setNmParameterBool));
                         NativeMemory.s_setNmParameterBool(messageMemory, name, argValueConverted);
                     }
                     else if (argType == typeof(int))
                     {
+                        if (NativeMemory.s_setNmParameterInt == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_setNmParameterInt));
                         NativeMemory.s_setNmParameterInt(messageMemory, name, argValue);
                     }
                 }
@@ -6344,9 +6455,11 @@ namespace SHVDN
                     switch (argValue)
                     {
                         case float[] vector3ArgValue:
+                            if (NativeMemory.s_setNmParameterVector == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_setNmParameterVector));
                             NativeMemory.s_setNmParameterVector(messageMemory, name, vector3ArgValue[0], vector3ArgValue[1], vector3ArgValue[2]);
                             break;
                         case string stringArgValue:
+                            if (NativeMemory.s_setNmParameterString == null) ThrowGameFunctionNotFound(nameof(NativeMemory.s_setNmParameterString));
                             NativeMemory.s_setNmParameterString(messageMemory, name, ScriptDomain.CurrentDomain.PinString(stringArgValue));
                             break;
                     }
@@ -6392,12 +6505,14 @@ namespace SHVDN
                     return;
                 }
 
+                if (s_initMessageMemoryFunc == null) ThrowGameFunctionNotFound(nameof(s_initMessageMemoryFunc));
                 s_initMessageMemoryFunc(messageMemory, messageMemory + 0x18, 0x40);
 
                 SetNmParameters(messageMemory, _boolIntFloatParameters, _stringVector3ArrayParameters);
 
                 ulong fragInstNmGtaAddress = *(ulong*)(pedAddress + s_fragInstNmGtaOffset);
                 IntPtr messageStringPtr = ScriptDomain.CurrentDomain.PinString(_messageName);
+                if (s_sendNmMessageToPedFunc == null) ThrowGameFunctionNotFound(nameof(s_sendNmMessageToPedFunc));
                 s_sendNmMessageToPedFunc((ulong)fragInstNmGtaAddress, messageStringPtr, messageMemory);
 
                 FreeCoTaskMem(new IntPtr((long)messageMemory));
@@ -6420,6 +6535,26 @@ namespace SHVDN
         static byte* Rel32(byte* address, int offset, int instructionTail = 4)
         {
             return *(int*)(address + offset) + address + offset + instructionTail;
+        }
+
+        /// <summary>
+        /// StreamEmber: newest SHV game version id verified with this source (<c>GTA.GameVersion.v1_0_3889_0</c>).
+        /// Update together with <c>GameVersion.cs</c> when rebasing on a newer upstream.
+        /// </summary>
+        internal const int NewestVerifiedGameVersionId = 103;
+
+        /// <summary>
+        /// StreamEmber: thrown instead of calling a null function pointer (or dereferencing a null game address).
+        /// Calling address 0 faults in native code, which .NET Framework 4.8 cannot catch, so the whole game would
+        /// crash. A managed exception is caught by the script domain and only stops the script that triggered it.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static void ThrowGameFunctionNotFound(string memberName)
+        {
+            throw new InvalidOperationException(
+                $"SHVDN could not find the game memory required by '{memberName}' in this game version " +
+                $"(game version id: {GetGameVersion()}). The memory pattern was not found, so the call was blocked " +
+                "to avoid crashing the game.");
         }
     }
 }
