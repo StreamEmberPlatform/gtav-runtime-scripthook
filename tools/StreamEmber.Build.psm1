@@ -172,11 +172,11 @@ function Install-SEPackage {
         }
     }
     $root = (Resolve-Path $StageDirectory).Path.TrimEnd('\', '/')
-    $preserved = @($Preserve | ForEach-Object { $_.Replace('/', '\') })
+    $preserved = @($Preserve | ForEach-Object { $_.Replace('\', '/') })
     foreach ($file in Get-ChildItem $StageDirectory -Recurse -File) {
         $relative = $file.FullName.Substring($root.Length + 1)
         $target = Join-Path $GameDirectory $relative
-        if ($preserved -contains $relative -and (Test-Path $target) -and -not $ResetConfig) {
+        if ($preserved -contains $relative.Replace('\', '/') -and (Test-Path $target) -and -not $ResetConfig) {
             Write-Host "  kept (user settings): $relative"
             continue
         }
