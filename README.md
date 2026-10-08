@@ -10,7 +10,7 @@ GTA5.exe
  └─ ScriptHookV.dll              Alexander Blade (dev-c.com) — native çağrılar, script fiber'ları (ayrıca kurulur)
      └─ StreamEmber.Runtime.GTAV.asi            bu repo: .NET çalışma ortamı
          └─ StreamEmber.Scripting.GTAV.dll      bu repo: scriptlerin API'si (namespace GTA)
-             └─ StreamEmber\Scripts\*.dll       scriptler (ör. ui-runtime trainer'ı, StreamEmber modları)
+             └─ StreamEmber\Scripts\*.dll       scriptler (ör. StreamEmber Trainer: gtav-trainer-scripthook, StreamEmber modları)
 ```
 
 ## Oyun klasöründeki düzen
