@@ -41,3 +41,7 @@ ipch/
 # Temporary OS files
 .DS_Store
 Thumbs.db
+
+# StreamEmber
+/vendor/
+/builds/
