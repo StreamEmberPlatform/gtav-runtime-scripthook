@@ -24,6 +24,23 @@ Bu yüzden "nightly.N kaynağı" = o build'i tetikleyen `main` commit'idir.
 - Güncelleme: `git fetch upstream` → `git merge upstream/main` (ya da istenen nightly'nin commit'i) → yeni nightly no ile tag.
   Hangi commit'in hangi nightly olduğu: https://github.com/scripthookvdotnet/scripthookvdotnet-nightly/releases (release notunda commit SHA'sı var).
 
+## Fork değişiklikleri (upstream'den farkımız)
+
+`d9bb2bd2 fix(core): harden SHVDN against game crashes` — tamamı `source/core` içinde, her biri `StreamEmber:` yorumuyla işaretli:
+
+| Değişiklik | Neden |
+|---|---|
+| `NativeMemory.cs` `s_isDecoratorLocked`: `Rel32(address, 2, 5)` | Upstream 92c6925a disp32'yi +3'ten okuyor → `Decorator.IsLocked` yanlış bellek baytını okuyor/yazıyordu |
+| Tüm `delegate* unmanaged` çağrılarına null kontrolü → `ThrowGameFunctionNotFound` | Desen bulunamazsa 0 adresini çağırmak oyunu yakalanamaz şekilde çökertiyordu; artık yalnız ilgili script durur |
+| Statik kurucu: zincirleme desen aramaları, material vtable, araç tipi indeksi korumalı | Tek bir kaçan desen tüm NativeMemory'yi (TypeInitializationException) devre dışı bırakıyordu |
+| Prop kod yaması (479d9fbd) yalnız doğrulanmış sürümlerde (`NewestVerifiedGameVersionId = 103` = b3889) | Çok wildcard'lı desen, bilinmeyen build'de yanlış kodu NOP'layabilir |
+| `ScriptDomain.SignalAndWaitWithHangWarning` | Yield etmeyen script oyunu dondurunca 5 sn'de bir uyarı loglar. **Script'i öldürmez** (upstream af2b8cc5: native çağrı ortasında abort çöküş yapar) |
+| `DllMain.cpp` tick sınırında try/catch (konsol ve domain ayrı, log kısıtlı) | Sızan managed exception süreci sonlandırıyordu |
+| `DllMain.cpp`: `GTA5_Enhanced.exe` içinde pasif kalır, sebebi `ScriptHookVDotNet.log`'a yazar | SHVDN Enhanced'i desteklemiyor |
+
+Oyun güncellenince: `GameVersion.cs`'e yeni sürüm gelmiş upstream'e rebase et ve `NewestVerifiedGameVersionId`'yi güncelle.
+Yama dosyası: `vendor/patches/0001-streamember-crash-hardening.patch` (git dışı yedek).
+
 ## Klasörler
 
 ```text
