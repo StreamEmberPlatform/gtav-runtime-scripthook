@@ -1062,7 +1062,7 @@ namespace SHVDN
                 compilerOptions.ReferencedAssemblies.Add("System.Drawing.dll");
                 compilerOptions.ReferencedAssemblies.Add("System.Windows.Forms.dll");
                 // Reference the newest scripting API
-                compilerOptions.ReferencedAssemblies.Add("ScriptHookVDotNet3.dll");
+                compilerOptions.ReferencedAssemblies.Add(StreamEmberLayout.ScriptingFile);
                 compilerOptions.ReferencedAssemblies.Add(typeof(ScriptDomain).Assembly.Location);
 
                 // With this parameter, you can use natives that require accessible addresses without having to use

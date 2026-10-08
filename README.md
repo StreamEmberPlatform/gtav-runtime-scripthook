@@ -1,53 +1,84 @@
-Script Hook V .NET (SHVDN)
-============================
+# StreamEmber Runtime (GTA V)
 
-[![NuGet](https://img.shields.io/nuget/v/scripthookvdotnet3.svg?label=nuget%20%28v3%29)](https://www.nuget.org/packages/scripthookvdotnet3)
-[![Nightly Build Status](https://github.com/scripthookvdotnet/scripthookvdotnet/actions/workflows/nightly-release.yml/badge.svg)](https://github.com/scripthookvdotnet/scripthookvdotnet/actions/workflows/nightly-release.yml)
-[![License](https://img.shields.io/github/license/scripthookvdotnet/scripthookvdotnet?color=%232A922A)](LICENSE.txt)
+Grand Theft Auto V (Legacy) için StreamEmber'in .NET script çalışma ortamı. Oyunun içinde .NET Framework 4.8'i başlatır,
+`StreamEmber\Scripts\` klasöründeki scriptleri yükler ve onlara `StreamEmber.Scripting.GTAV` API'sini verir.
+[Community Script Hook V .NET](https://github.com/scripthookvdotnet/scripthookvdotnet) (SHVDN, zlib) üzerine kuruludur;
+kendi sürüm numarası, adları ve klasör düzeni olan bağımsız bir dağıtımdır.
 
-This is an ASI plugin for Grand Theft Auto V, based on the C++ ScriptHook by Alexander Blade, which allows running scripts written in any .NET language in-game.
+```text
+GTA5.exe
+ └─ ScriptHookV.dll              Alexander Blade (dev-c.com) — native çağrılar, script fiber'ları (ayrıca kurulur)
+     └─ StreamEmber.Runtime.GTAV.asi            bu repo: .NET çalışma ortamı
+         └─ StreamEmber.Scripting.GTAV.dll      bu repo: scriptlerin API'si (namespace GTA)
+             └─ StreamEmber\Scripts\*.dll       scriptler (ör. ui-runtime trainer'ı, StreamEmber modları)
+```
 
-The issues page should be primarily used for bug reports and focused enhancement ideas. Questions related to GTA V scripting in general, are better off on the [Discussions page](https://github.com/scripthookvdotnet/scripthookvdotnet/discussions/categories/q-a) or in forums dedicated to this purpose.
+## Oyun klasöründeki düzen
 
-## Requirements
+| Dosya | Görev |
+|---|---|
+| `StreamEmber.Runtime.GTAV.asi` | Çalışma ortamı. ASI yükleyici (`dinput8.dll`) oyun kökünden yükler |
+| `StreamEmber\Runtime\StreamEmber.Scripting.GTAV.dll` | Script API'si |
+| `StreamEmber\Config\Runtime.ini` | Ayarlar (konsol tuşu F4, script zaman aşımı, scripts klasörü). Güncellemede korunur |
+| `StreamEmber\Scripts\` | Scriptler |
+| `StreamEmber\Logs\Runtime.log` | Log |
+| `StreamEmber\Manifests\StreamEmber.Runtime.GTAV.json` | Paket manifest'i: sürüm, commit, dosyalar ve SHA-256 değerleri |
+| `StreamEmber\Licenses\StreamEmber.Runtime.GTAV\` | Lisanslar |
 
-* [C++ Script Hook V by Alexander Blade](http://www.dev-c.com/gtav/scripthookv/)
-* [.NET Framework ≥ 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48)
-* [Microsoft Visual C++ Redistributable (Latest supported v14, not v14.0)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#visual-c-v14-redistributable)
+Gereken: `ScriptHookV.dll` ve `dinput8.dll` ([dev-c.com](http://www.dev-c.com/gtav/scripthookv/)), GTA V **Legacy** (`GTA5.exe`).
+Enhanced (`GTA5_Enhanced.exe`) desteklenmez; çalışma ortamı orada pasif kalır ve sebebini loga yazar.
+Resmi SHVDN ile birlikte kullanılmaz: kurulum `ScriptHookVDotNet.asi`'yi `.disabled` yapar.
 
-## Downloads
-The stable builds can be downloaded from the [Releases](https://github.com/scripthookvdotnet/scripthookvdotnet/releases) page.
-You need to use the ASI file and the DLL files for APIs in an archive of the same version as the internal structure can be changed without notice.  
-**If you are using the game version v1.0.3258.0 or later and installing SHVDN *as a user*, use the nightly version `v3.6.0-nightly.89` or later (see below for nightly version details), or downgrade the game to v1.0.3179.0 or earlier! `v3.6.0` and `v3.5.1` have [a compatibility issue with the game version v1.0.3258.0 and later game versions](https://github.com/scripthookvdotnet/scripthookvdotnet/issues/1451)!** For script developers: you should build your scripts against stable versions rather than nightly ones unless you acknowledge that public features that aren't in stable versions can get breaking changes. Even if some stable versions don't work, that is not important when building against ones. See below for details.
+> Topluluğun SHVDN scriptleri (`ScriptHookVDotNet3.dll`'e göre derlenmiş) bu çalışma ortamında yüklenmez. Scriptler
+> `StreamEmber.Scripting.GTAV.dll`'e göre derlenir; API, SHVDN v3 API'siyle aynıdır (`using GTA;`).
 
-For newer builds, check out the [Nightly Builds](https://github.com/scripthookvdotnet/scripthookvdotnet-nightly/releases). You don't have to sign in to GitHub to download nightly releases.  
-Here are some of the notes you should be aware of when using a nightly version (from v3.6.0):
-* The default API version for raw scripts is changed from v2 to v3.
-    * **For Users**: If you have raw scripts (`.cs` and `.vb` scripts) without an API version notation by file name, you will need to specify in nightly versions. You can specify an API version by adding a dot and a version number right before the extension name (e.g. `Script.cs` to `Script.2.cs`).
-* The .ini settings are changed. You should use the .ini file that comes from a nightly release. SHVDN does not add missing settings currently.
-* Warning messages are added for scripts built against the v2 API, which is not as maintained as the v3 one and will not have any new features. This does not mean the v2 API will not be even receiving compatibility fixes for new game updates in the *near* future. These messages are printed to urge users to ask the script authors to migrate to the v3 API.
-* Some scripts *may* not be working that rely on the main thread of the game process (for game logic).
-    * This is because we had to use a dedicated thread other than the main thread to avoid using ScriptHookV's fiber, so users won't have crucial compatibility problems with RAGE Plugin Hook and C++ scripts that use try-catch blocks. Although we are still searching for how to have SHVDN tick in the main game thread by hooking a function in the game process, we have not found one.
+## Sürümler ve yayın
 
-For script developers, please note that new APIs included in new nightly builds but not included in any stable versions are subject to change without notice, so it is not advisable to use any of them for public/production builds of your scripts.
-In other words, **you should build your scripts against stable versions but not nightly versions unless you build your scripts for testing some of the new APIs added in nightly versions, so you won't accidentally use anything not available in any stable versions. Building scripts against nightly versions may make scripts not work as intended in SHVDN versions different from the versions they are built against! No compatibility support will be provided for nightly-only features!**
-Even if no stable versions of SHVDN work in any game versions, you can build against stable API versions of SHVDN and tell users to use nightly versions until a newer stable version of SHVDN is released.
+- Sürüm: `VERSION` dosyası `major.minor`, patch = o dosyanın son değiştiği commit'ten bu yana commit sayısı.
+  `main`'e her push yeni bir sürümdür: `v1.0.0`, `v1.0.1`, … Minör/majör artırmak için `VERSION`'ı değiştirip pushla.
+- GitHub Actions (`.github/workflows/build.yml`): her push ve PR'da derleme + testler; `main`'de ayrıca etiket ve
+  GitHub Release (`StreamEmber.Runtime.GTAV-<sürüm>.zip` + `.sha256`). Zip'in kökü = oyun klasörü.
+- Yerel derlemeler `-dev` ekiyle damgalanır (`1.0.5-dev`); yayınlanan dosyalarla karışmaz.
+- DLL'lerde: dosya ve ürün sürümü = StreamEmber sürümü; API derlemesinin `AssemblyVersion`'ı API seviyesidir (`3.7.0.0`).
 
-## Installation
-* Extract all the files in the root folder from the zip file into your game folder (where `GTA5.exe` is) except for `README.txt` and the 2 folders.
-    * The XML files in the `Docs` folder are provided solely as API documentation for script developers.
-* When you update, **always make sure to update at least all the asi and the .dll files together! No support will be provided if you cherry-pick them and that causes problems!** The following files are the ones you must update together:
-    * `ScriptHookVDotNet.asi`
-    * `ScriptHookVDotNet2.dll`
-    * `ScriptHookVDotNet3.dll`
+## Derleme
 
-## Contributing
+Visual Studio 2022+ ("Desktop development with C++" + C++/CLI desteği), .NET Framework 4.8 targeting pack.
 
-You'll need Visual Studio 2022 or higher to open the project file and the [Script Hook V SDK](http://www.dev-c.com/gtav/scripthookv/) extracted into [/sdk](/sdk).
+```powershell
+.\build.ps1                                        # derle + dist\GTAV\ + artifacts\*.zip
+.\build.ps1 -Deploy -GamePath "D:\EpicGames\GTAV"  # + oyuna kur (ya da GTAV_GAME_PATH)
+.\build.ps1 -Deploy -ResetConfig                   # Runtime.ini'yi de şablonla değiştir
+```
 
-Any contributions to the project are welcomed, it's recommended to use GitHub [pull requests](https://help.github.com/articles/using-pull-requests/).
+## Upstream ile ilişki
 
-## License
+| | |
+|---|---|
+| Upstream | https://github.com/scripthookvdotnet/scripthookvdotnet (`main`) |
+| Taban | `4cd31528` (v3.7.0-nightly.192 karşılığı) |
+| Remote | `upstream` → resmi repo, `origin` → StreamEmberPlatform/gtav-runtime-scripthook |
 
-ScriptHookVDotNet is primarily distributed under the terms of the zlib license.
-See [LICENSE](LICENSE.txt) and [COPYRIGHT](COPYRIGHT.md) for details.
+Güncelleme: `git fetch upstream && git merge upstream/main`, ardından derleme + oyun testi. Bizim değişiklikler küçük ve
+işaretli tutulur (`StreamEmber:` yorumları); isim ve yollar yalnız `source/core/StreamEmberLayout.cs` içindedir.
+Upstream'in v2 API'si (`source/scripting_v2`) depoda durur ama derlenmez ve dağıtılmaz.
+
+### Upstream'den farklarımız
+
+| Değişiklik | Neden |
+|---|---|
+| Adlar ve klasör düzeni (`StreamEmberLayout.cs`), v2 API'si yok, `.pdb`/`.xml` yok | StreamEmber dağıtımı |
+| `NativeMemory.cs` `s_isDecoratorLocked`: `Rel32(address, 2, 5)` | Upstream disp32'yi +3'ten okuyor → `Decorator.IsLocked` yanlış bayt |
+| Tüm `delegate* unmanaged` çağrılarına null kontrolü | Bulunamayan desen 0 adresini çağırıp oyunu çökertiyordu; artık yalnız ilgili script durur |
+| Statik kurucuda desen aramaları ayrı ayrı korumalı | Tek kaçan desen tüm NativeMemory'yi devre dışı bırakıyordu |
+| Prop kod yaması yalnız doğrulanmış oyun sürümlerinde (`NewestVerifiedGameVersionId`) | Bilinmeyen build'de yanlış kodu NOP'lama riski |
+| `SignalAndWaitWithHangWarning` | Yield etmeyen script için 5 sn'de bir uyarı; script'i öldürmez |
+| `DllMain.cpp` tick sınırında try/catch | Sızan managed exception süreci sonlandırıyordu |
+| `GTA5_Enhanced.exe` içinde pasif kalma | Enhanced desteklenmiyor |
+
+Oyun güncellenince: yeni `GameVersion` değerini getiren upstream'i birleştir, `NewestVerifiedGameVersionId`'yi güncelle.
+
+## Lisans
+
+zlib ([LICENSE.txt](LICENSE.txt), [COPYRIGHT.md](COPYRIGHT.md), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
+Upstream belgeleri: [docs/upstream](docs/upstream/README.md).

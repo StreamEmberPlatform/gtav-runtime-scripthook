@@ -30,7 +30,7 @@ namespace SHVDN
             public bool ForceLogToConsole { get; }
         }
 
-        private static string FilePath => Path.ChangeExtension(typeof(ScriptDomain).Assembly.Location, ".log");
+        private static string FilePath => StreamEmberLayout.LogFile;
 
         internal static string FileName => Path.GetFileName(FilePath);
 

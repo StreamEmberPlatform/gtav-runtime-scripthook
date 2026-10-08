@@ -85,16 +85,13 @@ namespace SHVDN
         [DllImport("kernel32.dll")]
         private static extern uint GetCurrentThreadId();
 
-        private static readonly Version s_FirstApiVerThatHasSeparateApiModuleFromAsi = new Version(2, 10, 0, 0);
         private static readonly Version s_FirstVerWhereScriptingAssemblyHasProperVersionInfo = new Version(2, 9, 0, 0);
         private static readonly Version s_LastVerWhereScriptingAssemblyDoesNotHaveProperVersionInfo = new Version(2, 8, 0, 0);
         private static readonly Version s_FirstApiVerWhereNativeCallDoesntResetTimeoutByDefault = new Version(3, 7, 0, 0);
 
+        // StreamEmber: a single scripting API module with a fixed name (see StreamEmberLayout)
         private static readonly Regex s_ScriptingApiModuleNamePattern
-            = new Regex(@"^ScriptHookVDotNet\d\.dll$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly Regex s_ScriptingApiModuleNamePatternWithVersionCapture
-            = new Regex(@"^ScriptHookVDotNet(?<ver>\d)\.dll$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            = new Regex("^" + Regex.Escape(StreamEmberLayout.ScriptingFileName) + "$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static ScriptDomain s_currentDomain;
         // `Dispose` won't be called in this instance because it may be too difficult to call correctly due to how
@@ -299,7 +296,7 @@ namespace SHVDN
             AppDomain.UnhandledException += HandleUnhandledException;
 
             // Load API assemblies into this script domain
-            foreach (string apiPath in Directory.EnumerateFiles(apiBasePath, "ScriptHookVDotNet*.dll", SearchOption.TopDirectoryOnly))
+            foreach (string apiPath in Directory.EnumerateFiles(apiBasePath, StreamEmberLayout.ScriptingFileName, SearchOption.TopDirectoryOnly))
             {
                 if (!s_ScriptingApiModuleNamePattern.IsMatch(Path.GetFileName(apiPath)))
                 {
@@ -341,20 +338,15 @@ namespace SHVDN
 
             if (_scriptingApiAsms.Count == 0)
             {
-                Log.Message(Log.Level.Error, "No scripting API .dll files (\"ScriptHookVDotNet*.dll\") were loaded, " +
-                    "and therefore ScriptHookVDotNet can't load any scripts or have the console work, including " +
-                    "the reload feature, except for displaying logs. Make sure *at least* ScriptHookVDotNet3.dll is in" +
-                    "the root directory, so the console can work and scripts that are built against only " +
-                    "ScriptHookVDotNet3.dll (the v3 API) can work.");
+                Log.Message(Log.Level.Error, "The scripting API (", StreamEmberLayout.ScriptingFile, ") was not loaded, " +
+                    "so no scripts can run and the console only shows logs. Reinstall the StreamEmber runtime.");
 
                 return;
             }
             else if (!_scriptingGtaClassTypesCacheDict.TryGetValue(3, out Type _))
             {
-                Log.Message(Log.Level.Warning, "ScriptHookVDotNet3.dll is not loaded, and therefore ScriptHookVDotNet " +
-                    "can't have the console work except for displaying logs. You should make sure the dll file is in " +
-                    "the root directory, so the console can work. You can't reload scripts via the console because " +
-                    "it is not working properly.");
+                Log.Message(Log.Level.Warning, StreamEmberLayout.ScriptingFileName, " does not provide API version " +
+                    StreamEmberLayout.ScriptingApiMajorVersion.ToString() + ", so the console only shows logs.");
             }
         }
 
@@ -484,7 +476,7 @@ namespace SHVDN
 
                 if (scriptApi == null)
                 {
-                    string apiVersionStr = "ScriptHookVDotNet" + apiVersion.ToString() + ".dll";
+                    string apiVersionStr = StreamEmberLayout.ScriptingFileName + " (API " + apiVersion.ToString() + ")";
                     Log.Message(Log.Level.Error, "Could not compile ", Path.GetFileName(filename), " because " +
                         "the scripting API with the specified version (", apiVersionStr, ") to compile scripts " +
                         "is not loaded.");
@@ -656,7 +648,7 @@ namespace SHVDN
             }
 
             // Show the warning "Resolving API version 0.0.0" if the script reference a version-less SHVDN
-            AssemblyName shvdnAssembly = assembly.GetReferencedAssemblies().FirstOrDefault(x => x.Name == "ScriptHookVDotNet");
+            AssemblyName shvdnAssembly = assembly.GetReferencedAssemblies().FirstOrDefault(x => StreamEmberLayout.IsRuntimeAssemblyName(x.Name));
             if (shvdnAssembly != null && shvdnAssembly.Version == new Version(0, 0, 0, 0))
             {
                 Log.Message(Log.Level.Warning, "Resolving API version 0.0.0 referenced in " + fileNameWithoutPath, ".");
@@ -685,7 +677,7 @@ namespace SHVDN
             {
                 if (missingApiVersions.Length == 1)
                 {
-                    string missingApiStr = "ScriptHookVDotNet" + missingApiVersions[0].ToString() + ".dll";
+                    string missingApiStr = StreamEmberLayout.ScriptingFileName + " (API " + missingApiVersions[0].ToString() + ")";
                     Log.Message(Log.Level.Error, "Failed to load scripts in ", Path.GetFileName(filename),
                         " because ", missingApiStr, " is missing in the root directory.");
                 }
@@ -914,34 +906,11 @@ namespace SHVDN
                     UpdateDictIfValueDoesNotExistOnKeyOrValueIsOlder(resolvedApis, asmVer);
                     continue;
                 }
-                string asmNameStr = asmName.Name;
-                if (!asmNameStr.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
+                // StreamEmber: our API name, but not loaded (or another major version): report it as missing.
+                // Scripts built for upstream SHVDN (ScriptHookVDotNet*.dll) are not supported by this runtime.
+                if (StreamEmberLayout.IsScriptingAssemblyName(asmName.Name))
                 {
-                    // we know the assembly isn't ours now
-                    continue;
-                }
-
-                if (asmNameStr.Length == "ScriptHookVDotNet".Length)
-                {
-                    Version verInfoInAsm = asmName.Version;
-                    Version targetVerToUseForDict
-                        = (verInfoInAsm >= s_FirstVerWhereScriptingAssemblyHasProperVersionInfo)
-                        ? verInfoInAsm
-                        : s_LastVerWhereScriptingAssemblyDoesNotHaveProperVersionInfo;
-
-                    // There **are** scripts that have references to version-less (0.0.0.0) SHVDN and versioned one
-                    // in the *same* assembly, such as "Animation Viewer" by Guadmaz. Therefore, we need to avoid
-                    // naively calling `Dictionary.Add` without checking if the key already exists.
-                    UpdateDictIfValueDoesNotExistOnKeyOrValueIsOlder(resolvedApis, targetVerToUseForDict);
-                }
-                else
-                {
-                    Match nameMatch = s_ScriptingApiModuleNamePatternWithVersionCapture.Match(asmName.Name);
-                    if (nameMatch.Success)
-                    {
-                        int capturedMajorVer = int.Parse(nameMatch.Groups["ver"].Value);
-                        missingApiVersionList.Add(capturedMajorVer);
-                    }
+                    missingApiVersionList.Add(asmName.Version.Major);
                 }
             }
 
@@ -968,7 +937,7 @@ namespace SHVDN
                     "Failed to load script assembly ", Path.GetFileName(fileName), ": ", ex.ToString());
             }
             // Filter out failure if unable to resolve SHVDN API, since this was already logged in `HandleResolve`
-            else if (!fileNotFoundException.Message.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
+            else if (!fileNotFoundException.Message.StartsWith(StreamEmberLayout.ScriptingAssemblyName, StringComparison.OrdinalIgnoreCase))
             {
                 Log.Message(Log.Level.Error, "Failed to load script assembly ", Path.GetFileName(fileName),
                     " when searching for script types because there is an assembly that the script tried to load as " +
@@ -1252,7 +1221,8 @@ namespace SHVDN
                 {
                     var assemblyName = AssemblyName.GetAssemblyName(assemblyFiles[i]);
 
-                    if (!assemblyName.Name.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
+                    if (!StreamEmberLayout.IsScriptingAssemblyName(assemblyName.Name) &&
+                        !StreamEmberLayout.IsRuntimeAssemblyName(assemblyName.Name))
                     {
                         continue;
                     }
@@ -2133,14 +2103,13 @@ namespace SHVDN
 
             // Special case for the main assembly (this is necessary since the .NET framework does not check ASI files for assemblies during lookup, so is unable to load the ScriptDomain type when creating it in a new application domain)
             // Some scripts were written against old SHVDN versions where everything was still in the ASI, so make sure those are not caught here (see also https://github.com/crosire/scripthookvdotnet/releases/tag/v2.10.0)
-            if (assemblyName.Name.Equals("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase)
-                && assemblyName.Version >= s_FirstApiVerThatHasSeparateApiModuleFromAsi)
+            if (StreamEmberLayout.IsRuntimeAssemblyName(assemblyName.Name))
             {
                 return typeof(ScriptDomain).Assembly;
             }
 
-            // Handle resolve of the scripting API assembly (ScriptHookVDotNet*.dll)
-            if (CurrentDomain != null && assemblyName.Name.StartsWith("ScriptHookVDotNet", StringComparison.OrdinalIgnoreCase))
+            // Handle resolve of the scripting API assembly (StreamEmber.Scripting.<GAME>.dll)
+            if (CurrentDomain != null && StreamEmberLayout.IsScriptingAssemblyName(assemblyName.Name))
             {
                 var bestVersion = new Version(0, 0, 0, 0);
 

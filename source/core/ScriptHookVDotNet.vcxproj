@@ -52,7 +52,8 @@
   <!-- Global compilation settings -->
   <PropertyGroup>
     <TargetExt>.asi</TargetExt>
-    <TargetName>ScriptHookVDotNet</TargetName>
+    <!-- StreamEmber: must match StreamEmberLayout.RuntimeAssemblyName (and the #using in DllMain.cpp) -->
+    <TargetName>StreamEmber.Runtime.GTAV</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -61,9 +62,12 @@
     <ClCompile>
       <AdditionalUsingDirectories>$(IntDir);%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <AdditionalIncludeDirectories>sdk\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions Condition="'$(SHVDN_VERSION)'==''">SHVDN_VERSION="3.0.0.0";%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(SHVDN_VERSION)'!=''">SHVDN_VERSION="$(SHVDN_VERSION)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- StreamEmber: versions come from Directory.Build.props (SE_VERSION) -->
+      <PreprocessorDefinitions>SHVDN_VERSION="$(SE_FILE_VERSION)";SE_VERSION="$(SE_VERSION)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>SE_VER_MAJOR=$(SE_VER_MAJOR);SE_VER_MINOR=$(SE_VER_MINOR);SE_VER_PATCH=$(SE_VER_PATCH);SE_VERSION_STR="$(SE_VERSION)";SE_FILE_VERSION_STR="$(SE_FILE_VERSION)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
     <CsCompile>
       <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
       <Utf8Output>true</Utf8Output>
@@ -108,7 +112,8 @@
       <DebugSymbols>false</DebugSymbols>
     </CsCompile>
     <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- StreamEmber: no .pdb in release packages -->
+      <GenerateDebugInformation>false</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='NativeGen|x64'">
@@ -143,6 +148,7 @@
     <CsCompile Include="Script.cs" />
     <CsCompile Include="ScriptDomain.cs" />
     <CsCompile Include="StringMarshal.cs" />
+    <CsCompile Include="StreamEmberLayout.cs" />
     <CsCompile Include="CheapThreadSafeStopwatch.cs" />
   </ItemGroup>
   <ItemGroup>

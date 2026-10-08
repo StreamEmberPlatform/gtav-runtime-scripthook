@@ -50,7 +50,7 @@ static void RequestScriptDomainToReload()
 
 // Import C# code base
 #include <msclr\lock.h>
-#using "ScriptHookVDotNet.netmodule"
+#using "StreamEmber.Runtime.GTAV.netmodule" // = $(TargetName).netmodule (StreamEmberLayout.RuntimeAssemblyName)
 
 using namespace System;
 using namespace System::Collections::Generic;
@@ -517,15 +517,18 @@ static void ScriptHookVDotNet_ManagedInit()
         }
     }
 
+    // StreamEmber: everything lives under <game>\StreamEmber (see StreamEmberLayout.cs)
+    SHVDN::StreamEmberLayout::EnsureWritableDirectories();
+
     // Clear log from previous runs
     SHVDN::Log::Clear();
 
     // Load configuration
-    String^ scriptPath = "scripts";
+    String^ scriptPath = SHVDN::StreamEmberLayout::ScriptsDirectory;
 
     try
     {
-        array<String^>^ config = IO::File::ReadAllLines(IO::Path::ChangeExtension(Assembly::GetExecutingAssembly()->Location, ".ini"));
+        array<String^>^ config = IO::File::ReadAllLines(SHVDN::StreamEmberLayout::ConfigFile);
 
         for each (String ^ line in config)
         {
@@ -580,7 +583,7 @@ static void ScriptHookVDotNet_ManagedInit()
                 }
             }
             else if (String::Equals(keyStr, "ScriptsLocation", StringComparison::OrdinalIgnoreCase))
-                scriptPath = valueStr->Trim('"');
+                scriptPath = SHVDN::StreamEmberLayout::ResolveGamePath(valueStr->Trim('"'));
             else if (String::Equals(keyStr, "AutoLoadScripts", StringComparison::OrdinalIgnoreCase))
             {
                 bool outVal;
@@ -597,7 +600,7 @@ static void ScriptHookVDotNet_ManagedInit()
     }
 
     // Create a separate script domain
-    domain = SHVDN::ScriptDomain::Load(".", scriptPath);
+    domain = SHVDN::ScriptDomain::Load(SHVDN::StreamEmberLayout::RuntimeDirectory, scriptPath);
     if (domain == nullptr)
         return;
 
@@ -632,7 +635,7 @@ static void ScriptHookVDotNet_ManagedInit()
         console->CommandHistory = stashedConsoleCommandHistory;
 
         // Print welcome message
-        console->PrintInfo("~c~--- Community Script Hook V .NET " SHVDN_VERSION " ---");
+        console->PrintInfo(String::Concat("~c~--- StreamEmber Runtime (GTA V) ", SHVDN::StreamEmberLayout::ProductVersion, " ---"));
         console->PrintInfo("~c~--- Type \"Help()\" to print an overview of available commands ---");
 
         ScriptHookVDotNet::SendPendingMessagesToConsole(console, pendingLogMessageInfo);
@@ -949,7 +952,7 @@ static bool IsRunningInGtaVEnhanced()
     return _wcsicmp(exeName, L"GTA5_Enhanced.exe") == 0;
 }
 
-// Appends one line to ScriptHookVDotNet.log next to the asi. Only kernel32 calls, so it is safe in DllMain.
+// Appends one line to StreamEmber\Logs\Runtime.log next to the asi. Only kernel32 calls, so it is safe in DllMain.
 static void WriteUnsupportedGameLogLine(HMODULE hModule)
 {
     wchar_t logPath[MAX_PATH];
@@ -959,12 +962,26 @@ static void WriteUnsupportedGameLogLine(HMODULE hModule)
         return;
     }
 
-    wchar_t* ext = wcsrchr(logPath, L'.');
-    if (ext == nullptr || (MAX_PATH - (ext - logPath)) < 5)
+    wchar_t* slash = wcsrchr(logPath, L'\\');
+    if (slash == nullptr)
     {
         return;
     }
-    wcscpy_s(ext, MAX_PATH - (ext - logPath), L".log");
+    *slash = L'\0';
+    if (wcscat_s(logPath, MAX_PATH, L"\\StreamEmber") != 0)
+    {
+        return;
+    }
+    CreateDirectoryW(logPath, NULL);
+    if (wcscat_s(logPath, MAX_PATH, L"\\Logs") != 0)
+    {
+        return;
+    }
+    CreateDirectoryW(logPath, NULL);
+    if (wcscat_s(logPath, MAX_PATH, L"\\Runtime.log") != 0)
+    {
+        return;
+    }
 
     const HANDLE file = CreateFileW(logPath, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS,
         FILE_ATTRIBUTE_NORMAL, NULL);
@@ -973,7 +990,7 @@ static void WriteUnsupportedGameLogLine(HMODULE hModule)
         return;
     }
 
-    const char message[] = "[ERROR] ScriptHookVDotNet is disabled: GTA V Enhanced (GTA5_Enhanced.exe) is not supported. "
+    const char message[] = "[ERROR] StreamEmber Runtime is disabled: GTA V Enhanced (GTA5_Enhanced.exe) is not supported. "
         "Use GTA V Legacy (GTA5.exe).\r\n";
     DWORD written = 0;
     WriteFile(file, message, sizeof(message) - 1, &written, NULL);

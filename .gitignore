@@ -45,3 +45,5 @@ Thumbs.db
 # StreamEmber
 /vendor/
 /builds/
+/dist/
+/artifacts/
