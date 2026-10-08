@@ -75,6 +75,7 @@ Upstream'in v2 API'si (`source/scripting_v2`) depoda durur ama derlenmez ve dağ
 | `SignalAndWaitWithHangWarning` | Yield etmeyen script için 5 sn'de bir uyarı; script'i öldürmez |
 | `DllMain.cpp` tick sınırında try/catch | Sızan managed exception süreci sonlandırıyordu |
 | `GTA5_Enhanced.exe` içinde pasif kalma | Enhanced desteklenmiyor |
+| `source/core/StreamEmber*.cs`, `source/scripting_v3/GTA/StreamEmber/` (1.1) | SHVDN'de olmayan oyun mekanikleri ve deneysel kancalar, ChaosModV incelemesinden: [docs/StreamEmber-API.md](docs/StreamEmber-API.md) |
 
 Oyun güncellenince: yeni `GameVersion` değerini getiren upstream'i birleştir, `NewestVerifiedGameVersionId`'yi güncelle.
 

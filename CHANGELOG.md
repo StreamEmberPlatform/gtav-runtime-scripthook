@@ -3,6 +3,15 @@
 Sürümler `VERSION` (major.minor) + commit sayısı (patch) ile otomatik verilir; her `main` push'u bir sürümdür.
 Burada yalnız kayda değer değişiklikler tutulur.
 
+## 1.1
+- ChaosModV (C++) incelemesinden gelen yeni API'ler (ayrıntı: `docs/StreamEmber-API.md`):
+  `World.SnowOnGround`, `World.SkyDisabled`, `World.FreeColliderSlots`, `Entity.HasCollider`, `Entity.ApplyForceSafe`,
+  `Vehicle.IsOutOfControlState`, `Vehicle.IsBrakePressed`, `Vehicle.ScaleMatrix`, `VehicleXenonColorTable`,
+  `GTA.UI.Minimap`, `GTA.UI.ScreenDraw` (2D çizgi, WorldToScreen), `WaterQuads`, `Game.AllowRestrictedModelSpawning`,
+  `Game.DisableOnlineVehicleDespawn`, `Game.PatchScriptCode`, `Audio.PlayAmbientSpeechAtPosition`.
+- Deneysel oyun kancaları (native x64 detour motoru, yalnız ilk kullanımda kurulur, domain kapanınca geri alınır):
+  `Game.ScriptThreadsBlocked`, `AudioOverride` (perde, filtreler, ses), `GTA.UI.ScreenShader` (kendi HLSL'in).
+
 ## 1.0
 - İlk StreamEmber dağıtımı: `StreamEmber.Runtime.GTAV.asi` + `StreamEmber.Scripting.GTAV.dll`, `StreamEmber\` klasör
   düzeni (Runtime, Scripts, Config, Logs, Manifests, Licenses), kendi sürüm numaraları.

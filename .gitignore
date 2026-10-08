@@ -47,3 +47,5 @@ Thumbs.db
 /builds/
 /dist/
 /artifacts/
+# native code tests (tools/native-code-tests/run.sh)
+tools/native-code-tests/libharness.so

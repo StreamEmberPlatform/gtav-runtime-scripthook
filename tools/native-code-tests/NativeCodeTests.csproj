@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Linux / WSL test of StreamEmberNativeCode.cs (detour engine + native hook stubs) against Windows-x64 (ms_abi)
+       functions with the game's prologues. Run: ./run.sh (needs gcc and the .NET 8 SDK). Not part of the build. -->
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><AllowUnsafeBlocks>true</AllowUnsafeBlocks><Nullable>disable</Nullable><ImplicitUsings>disable</ImplicitUsings></PropertyGroup>
+  <ItemGroup><Compile Include="../../source/core/StreamEmberNativeCode.cs" /></ItemGroup>
+</Project>
