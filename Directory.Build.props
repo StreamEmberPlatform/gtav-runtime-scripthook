@@ -2,7 +2,7 @@
   <!--
     StreamEmber product version for every project in this repository (C++ runtime and C# API).
     SE_VERSION is SemVer (1.2.3 or 1.2.3-dev.4). build.ps1 / CI pass it (-p:SE_VERSION=...), computed from the
-    VERSION file and git history (see tools/version.ps1); IDE builds get 0.0.0-dev.
+    VERSION file and git history (see tools/StreamEmber.Build.psm1); IDE builds get 0.0.0-dev.
   -->
   <PropertyGroup>
     <SE_VERSION Condition="'$(SE_VERSION)' == ''">0.0.0-dev</SE_VERSION>
