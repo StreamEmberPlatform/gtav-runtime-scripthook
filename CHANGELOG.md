@@ -3,6 +3,12 @@
 Sürümler `VERSION` (major.minor) + commit sayısı (patch) ile otomatik verilir; her `main` push'u bir sürümdür.
 Burada yalnız kayda değer değişiklikler tutulur.
 
+## 1.2
+- StreamEmber Live (`StreamEmber.Live`): canlı yayın modları için gömülü EventFabric/GCore bağlantısı, Falcon ayarları,
+  presence ve Identity v2. Modlar `LiveScript`'ten türer; aksiyonlar `On(…)`, `[LiveAction]`, `ActionReceived` ile gelir.
+  Okuma customer UUID ile, EventFabric'e yazma yalnız runtime token ile. Eski GTAVScriptHook core'u ve modları desteklenmez.
+  `Runtime.ini`'ye `Live*` anahtarları eklendi (eksikse varsayılanlar). Ayrıntı: `docs/StreamEmber-Live.md`.
+
 ## 1.1
 - ChaosModV (C++) incelemesinden gelen yeni API'ler (ayrıntı: `docs/StreamEmber-API.md`):
   `World.SnowOnGround`, `World.SkyDisabled`, `World.FreeColliderSlots`, `Entity.HasCollider`, `Entity.ApplyForceSafe`,

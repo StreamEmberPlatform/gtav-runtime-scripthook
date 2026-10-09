@@ -32,6 +32,14 @@ Resmi SHVDN ile birlikte kullanılmaz: kurulum `ScriptHookVDotNet.asi`'yi `.disa
 > Topluluğun SHVDN scriptleri (`ScriptHookVDotNet3.dll`'e göre derlenmiş) bu çalışma ortamında yüklenmez. Scriptler
 > `StreamEmber.Scripting.GTAV.dll`'e göre derlenir; API, SHVDN v3 API'siyle aynıdır (`using GTA;`).
 
+## Canlı yayın modları (StreamEmber Live)
+
+Script API'si canlı yayın katmanını içerir: EventFabric/GCore bağlantısı, Falcon oyun ayarları ve Identity v2 kimliği.
+Canlı yayın modu `StreamEmber.Live.LiveScript`'ten türer ve aksiyonları Tick gibi olaylarla alır (`On("enemy.spawn", …)`,
+`[LiveAction]`, `ActionReceived`, `SettingsChanged`); HTTP yazmaz, ayrı bir core DLL'i taşımaz. Okuma customer UUID ile,
+EventFabric'e yazma (presence, GCore reset) yalnız Launcher'ın verdiği runtime token ile yapılır. Ayarlar `Runtime.ini` →
+`Live*` anahtarları. Ayrıntı: [docs/StreamEmber-Live.md](docs/StreamEmber-Live.md).
+
 ## Sürümler ve yayın
 
 - Sürüm: `VERSION` dosyası `major.minor`, patch = o dosyanın son değiştiği commit'ten bu yana commit sayısı.
@@ -76,6 +84,7 @@ Upstream'in v2 API'si (`source/scripting_v2`) depoda durur ama derlenmez ve dağ
 | `DllMain.cpp` tick sınırında try/catch | Sızan managed exception süreci sonlandırıyordu |
 | `GTA5_Enhanced.exe` içinde pasif kalma | Enhanced desteklenmiyor |
 | `source/core/StreamEmber*.cs`, `source/scripting_v3/GTA/StreamEmber/` (1.1) | SHVDN'de olmayan oyun mekanikleri ve deneysel kancalar, ChaosModV incelemesinden: [docs/StreamEmber-API.md](docs/StreamEmber-API.md) |
+| `source/scripting_v3/StreamEmber.Live/`, `StreamEmber.Live.Game/` (1.2) | Canlı yayın katmanı (EventFabric, Falcon ayarları, Identity v2); iki runtime'da aynı kod: [docs/StreamEmber-Live.md](docs/StreamEmber-Live.md) |
 
 Oyun güncellenince: yeni `GameVersion` değerini getiren upstream'i birleştir, `NewestVerifiedGameVersionId`'yi güncelle.
 

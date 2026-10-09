@@ -9,3 +9,5 @@
 - Dağıtımda `.pdb` / `.xml` olmaz; CI bunu denetler.
 - `tools/StreamEmber.Build.psm1` üç repoda (gtav-runtime-scripthook, rdr2-runtime-scripthook, ui-runtime) aynı tutulur.
 - Kullanıcıya görünen metinler Türkçe; kod, tanımlayıcılar ve kod yorumları İngilizce.
+- `source/scripting_v3/StreamEmber.Live/` iki runtime'da (gtav-runtime-scripthook, rdr2-runtime-scripthook) birebir aynı
+  tutulur; oyuna özgü kod yalnız `source/scripting_v3/StreamEmber.Live.Game/GameBridge.cs`. `docs/StreamEmber-Live.md` de aynıdır.
