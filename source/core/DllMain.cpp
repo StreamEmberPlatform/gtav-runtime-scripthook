@@ -756,57 +756,66 @@ static bool AreAllKeysPressed(array<WinForms::Keys>^ keys)
 
 static void ScriptHookVDotNet_ManagedKeyboardMessage(unsigned long keycode, bool keydown, bool ctrl, bool shift, bool alt)
 {
-    // Filter out invalid key codes
-    if (keycode <= 0 || keycode >= 256)
-        return;
-
-    // Protect against race condition during reload.
-    // Also prevent from the keyboard thread reading stale values such as key bindings.
-    msclr::lock l(ScriptHookVDotNet::variablesLockForMainDomain);
-
-    SHVDN::ScriptDomain^ scriptDomain = ScriptHookVDotNet::domain;
-    // If the TLS stuff is not initialized, the console or some script can call a native function without swapping
-    // TLS address, leading the whole process to crash
-    if (scriptDomain == nullptr || !scriptDomain->IsTlsStuffInitialized())
+    // StreamEmber: this method is entered from an unmanaged Script Hook V callback. A managed exception must never
+    // cross that boundary because it can terminate the game without leaving a useful runtime log.
+    try
     {
-        return;
-    }
-
-    ScriptHookVDotNet::UpdatePrimaryKeyboardStateCache(static_cast<unsigned char>(keycode), keydown);
-    ScriptHookVDotNet::UpdateKeyboardModifierStateCache(shift, ctrl, alt);
-
-    // Convert message into a key event
-    auto keys = safe_cast<WinForms::Keys>(keycode);
-    if (ctrl)  keys = keys | WinForms::Keys::Control;
-    if (shift) keys = keys | WinForms::Keys::Shift;
-    if (alt)   keys = keys | WinForms::Keys::Alt;
-
-    SHVDN::Console^ console = ScriptHookVDotNet::console;
-    if (console != nullptr)
-    {
-        if (keydown && AreAllKeysPressed(ScriptHookVDotNet::reloadKeyBinding))
-        {
-            // Force a reload
-            ScriptHookVDotNet::Reload();
+        // Filter out invalid key codes
+        if (keycode <= 0 || keycode >= 256)
             return;
-        }
-        if (keydown && AreAllKeysPressed(ScriptHookVDotNet::consoleKeyBinding))
+
+        // Protect against race condition during reload.
+        // Also prevent from the keyboard thread reading stale values such as key bindings.
+        msclr::lock l(ScriptHookVDotNet::variablesLockForMainDomain);
+
+        SHVDN::ScriptDomain^ scriptDomain = ScriptHookVDotNet::domain;
+        // If the TLS stuff is not initialized, the console or some script can call a native function without swapping
+        // TLS address, leading the whole process to crash
+        if (scriptDomain == nullptr || !scriptDomain->IsTlsStuffInitialized())
         {
-            // Toggle open state
-            console->IsOpen = !console->IsOpen;
             return;
         }
 
-        // Send key events to console
-        console->DoKeyEvent(keys, keydown);
+        ScriptHookVDotNet::UpdatePrimaryKeyboardStateCache(static_cast<unsigned char>(keycode), keydown);
+        ScriptHookVDotNet::UpdateKeyboardModifierStateCache(shift, ctrl, alt);
 
-        // Do not send keyboard events to other running scripts when console is open
-        if (console->IsOpen)
-            return;
+        // Convert message into a key event
+        auto keys = safe_cast<WinForms::Keys>(keycode);
+        if (ctrl)  keys = keys | WinForms::Keys::Control;
+        if (shift) keys = keys | WinForms::Keys::Shift;
+        if (alt)   keys = keys | WinForms::Keys::Alt;
+
+        SHVDN::Console^ console = ScriptHookVDotNet::console;
+        if (console != nullptr)
+        {
+            if (keydown && AreAllKeysPressed(ScriptHookVDotNet::reloadKeyBinding))
+            {
+                // Force a reload
+                ScriptHookVDotNet::Reload();
+                return;
+            }
+            if (keydown && AreAllKeysPressed(ScriptHookVDotNet::consoleKeyBinding))
+            {
+                // Toggle open state
+                console->IsOpen = !console->IsOpen;
+                return;
+            }
+
+            // Send key events to console
+            console->DoKeyEvent(keys, keydown);
+
+            // Do not send keyboard events to other running scripts when console is open
+            if (console->IsOpen)
+                return;
+        }
+
+        // Send key events to all scripts
+        scriptDomain->DoKeyEvent(keys, keydown);
     }
-
-    // Send key events to all scripts
-    scriptDomain->DoKeyEvent(keys, keydown);
+    catch (Exception^ ex)
+    {
+        SHVDN::Log::Message(SHVDN::Log::Level::Error, "Keyboard callback failed: ", ex->ToString());
+    }
 }
 
 // This is needed to match `_tls_index` of .NET CLR dlls, which are loaded by the OS loader (if we understand

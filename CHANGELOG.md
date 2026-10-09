@@ -5,6 +5,8 @@ Burada yalnız kayda değer değişiklikler tutulur.
 
 ## Yayımlanmamış — 2026-10-09
 - Arka plan threadlerinden oyun çağrılarını reddetme, tick bütçesi ve sınırlı Live kuyruğu. Kod yamalarında native işlem: thread konumu/beklenen bayt kontrolü, başka modun yamasını ezmeden geri alma. Windows eşzamanlı yama testleri.
+- F4 konsolu: klavye callback'inde oyun native'i çağırmama, unmanaged sınıra exception taşımama, güvenli metin tamponu,
+  thread-safe ve sınırlı log geçmişi, korumalı çizim indeksleri/native dönüşleri ve clipboard/compiler hata yalıtımı.
 
 ## 1.2
 - StreamEmber Live (`StreamEmber.Live`): canlı yayın modları için gömülü EventFabric/GCore bağlantısı, Falcon ayarları,

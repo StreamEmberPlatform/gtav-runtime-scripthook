@@ -33,7 +33,8 @@ namespace SHVDN
         private string _lastRenderedInput = string.Empty;
         private List<string> _lineHistory = new();
         private List<string> _commandHistory; // This must be set via CommandHistory property
-        private Queue<string[]> _outputQueue = new();
+        // StreamEmber: log messages can arrive from script/background threads while the game thread renders them.
+        private ConcurrentQueue<string[]> _outputQueue = new();
         private Dictionary<string, List<ConsoleCommand>> _commands = new();
         private int _lastClosedTickCount;
         private bool _shouldBlockControls;
@@ -54,6 +55,11 @@ namespace SHVDN
         private const int InputX = 28;
         private const int LinesPerPage = 16;
         private const float StatusScale = 0.25f;
+        private const int MaxTranslatedCharacters = 64;
+        private const int MaxConsoleLineLength = 1024;
+        private const int MaxInputLength = 4096;
+        private const int MaxHistoryLines = 2048;
+        private const int MaxQueuedBatchesPerTick = 64;
 
         // Stream Ember palette (MHud "modern" theme, amber accent)
         private static readonly Color s_backgroundColor = Color.FromArgb(222, 11, 14, 19);
@@ -166,8 +172,8 @@ namespace SHVDN
             get => _isOpen;
             set
             {
-                DisableControlsThisFrame();
-
+                // StreamEmber: this setter is called by Script Hook V's keyboard callback. Never issue game natives
+                // from that callback; control blocking starts safely on the next runtime tick.
                 _isOpen = value;
                 if (_isOpen)
                 {
@@ -266,12 +272,24 @@ namespace SHVDN
         /// <param name="color">The color of those lines.</param>
         private void AddLines(string prefix, string[] messages, string color)
         {
-            for (int i = 0; i < messages.Length; i++) // Add proper styling
+            if (messages == null || messages.Length == 0)
             {
-                messages[i] = $"~c~{DateTime.Now.ToString("HH:mm:ss")}  ~w~{prefix} {color}{messages[i]}";
+                return;
             }
 
-            _outputQueue.Enqueue(messages);
+            string[] formattedMessages = new string[messages.Length];
+            for (int i = 0; i < messages.Length; i++) // Add proper styling
+            {
+                string message = messages[i] ?? string.Empty;
+                if (message.Length > MaxConsoleLineLength)
+                {
+                    message = message.Substring(0, MaxConsoleLineLength) + "...";
+                }
+
+                formattedMessages[i] = $"~c~{DateTime.Now:HH:mm:ss}  ~w~{prefix ?? string.Empty} {color ?? string.Empty}{message}";
+            }
+
+            _outputQueue.Enqueue(formattedMessages);
         }
         /// <summary>
         /// Add text to the console input line.
@@ -282,6 +300,16 @@ namespace SHVDN
             if (string.IsNullOrEmpty(text))
             {
                 return;
+            }
+
+            int availableLength = MaxInputLength - _input.Length;
+            if (availableLength <= 0)
+            {
+                return;
+            }
+            if (text.Length > availableLength)
+            {
+                text = text.Substring(0, availableLength);
             }
 
             _input = _input.Insert(_cursorPos, text);
@@ -326,7 +354,7 @@ namespace SHVDN
         /// <param name="msg">The composite format string.</param>
         public void PrintMessage(string headerStr, string msg)
         {
-            AddLines(headerStr + " ", msg.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
+            AddLines((headerStr ?? string.Empty) + " ", (msg ?? string.Empty).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
         }
         /// <summary>
         /// Writes a message to the console.
@@ -335,12 +363,13 @@ namespace SHVDN
         /// <param name="args">The formatting arguments.</param>
         public void PrintMessage(string headerStr, string msg, params object[] args)
         {
-            if (args.Length > 0)
+            msg = msg ?? string.Empty;
+            if (args != null && args.Length > 0)
             {
                 msg = String.Format(msg, args);
             }
 
-            AddLines(headerStr + " ", msg.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
+            AddLines((headerStr ?? string.Empty) + " ", msg.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
         }
 
         const string DebugMessageHeaderStr = "~m~DEBUG~w~";
@@ -356,7 +385,12 @@ namespace SHVDN
         public void SetStatus(string text, int level)
         {
             level = System.Math.Max(0, System.Math.Min(3, level));
-            _status = Tuple.Create(DateTime.Now.ToString("HH:mm:ss") + "  " + (text ?? string.Empty), level, Environment.TickCount);
+            text = text ?? string.Empty;
+            if (text.Length > MaxConsoleLineLength)
+            {
+                text = text.Substring(0, MaxConsoleLineLength) + "...";
+            }
+            _status = Tuple.Create(DateTime.Now.ToString("HH:mm:ss") + "  " + text, level, Environment.TickCount);
         }
 
         /// <summary>Writes a Live/runtime message to the console and the bottom-left status line. Script thread.</summary>
@@ -494,28 +528,51 @@ namespace SHVDN
             int nowTickCount = Environment.TickCount;
 
             // Execute compiled input line script
-            if (_compilerTask != null && _compilerTask.IsCompleted)
+            Task<MethodInfo> compilerTask = _compilerTask;
+            if (compilerTask != null && compilerTask.IsCompleted)
             {
-                if (_compilerTask.Result != null)
+                try
                 {
-                    try
+                    if (compilerTask.IsCanceled)
                     {
-                        object result = _compilerTask.Result.Invoke(null, null);
-                        if (result != null)
+                        PrintWarning("Console compilation was canceled.");
+                    }
+                    else if (compilerTask.IsFaulted)
+                    {
+                        Exception error = compilerTask.Exception?.GetBaseException();
+                        PrintError($"[Compiler Exception]: {error?.ToString() ?? "Unknown compiler failure."}");
+                    }
+                    else
+                    {
+                        MethodInfo compiledMethod = compilerTask.Result;
+                        if (compiledMethod != null)
                         {
-                            PrintInfo($"[Return Value]: {result}");
+                            object result = compiledMethod.Invoke(null, null);
+                            if (result != null)
+                            {
+                                PrintInfo($"[Return Value]: {result}");
+                            }
                         }
                     }
-                    catch (TargetInvocationException ex)
+                }
+                catch (TargetInvocationException ex)
+                {
+                    PrintError($"[Exception]: {(ex.InnerException ?? ex).ToString()}");
+                }
+                catch (Exception ex)
+                {
+                    PrintError($"[Console Exception]: {ex}");
+                }
+                finally
+                {
+                    ClearInput();
+
+                    // Do not erase a newer task if one was installed while this task completed.
+                    if (ReferenceEquals(_compilerTask, compilerTask))
                     {
-                        PrintError($"[Exception]: {ex.InnerException.ToString()}");
+                        _compilerTask = null;
                     }
                 }
-
-                ClearInput();
-
-                // Reset compiler task
-                _compilerTask = null;
             }
 
             if (_keyboardEventQueue.TryDequeue(out Keys keys))
@@ -524,14 +581,15 @@ namespace SHVDN
                 {
                     var e = new KeyEventArgs(keys);
 
-                    var buf = new StringBuilder(256);
+                    var buf = new StringBuilder(MaxTranslatedCharacters);
                     byte[] keyboardState = new byte[256];
                     keyboardState[(int)Keys.Menu] = e.Alt ? (byte)0xff : (byte)0;
                     keyboardState[(int)Keys.ShiftKey] = e.Shift ? (byte)0xff : (byte)0;
                     keyboardState[(int)Keys.ControlKey] = e.Control ? (byte)0xff : (byte)0;
 
                     // Translate key event to character for text input
-                    ToUnicode((uint)e.KeyCode, 0, keyboardState, buf, 256, 0);
+                    // StreamEmber: bufferSize must not exceed the marshalled StringBuilder capacity.
+                    ToUnicode((uint)e.KeyCode, 0, keyboardState, buf, MaxTranslatedCharacters, 0);
                     AddToInput(buf.ToString());
 
                     //We only want to show candidates again if the actual input has changed.
@@ -539,15 +597,20 @@ namespace SHVDN
                 }
             }
 
-            // Add lines from concurrent queue to history
-            if (_outputQueue.Count > 0)
+            // Add a bounded number of lines from the concurrent queue to history.
+            int dequeuedBatchCount = 0;
+            while (dequeuedBatchCount < MaxQueuedBatchesPerTick && _outputQueue.TryDequeue(out string[] lines))
             {
-                string[] lines = _outputQueue.Dequeue();
-
                 foreach (string line in lines)
                 {
                     _lineHistory.Add(line);
                 }
+                dequeuedBatchCount++;
+            }
+
+            if (_lineHistory.Count > MaxHistoryLines)
+            {
+                _lineHistory.RemoveRange(0, _lineHistory.Count - MaxHistoryLines);
             }
 
             if (!IsOpen)
@@ -589,6 +652,7 @@ namespace SHVDN
 
             bool busy = _compilerTask != null;
             int pages = System.Math.Max(1, (_lineHistory.Count + (LinesPerPage - 1)) / LinesPerPage);
+            _currentPage = System.Math.Max(1, System.Math.Min(_currentPage, pages));
 
             // Panel and header
             DrawRect(0, 0, ConsoleWidth, ConsoleHeight, s_backgroundColor);
@@ -601,8 +665,9 @@ namespace SHVDN
 
             // Console history text
             int historyOffset = _lineHistory.Count - (LinesPerPage * _currentPage);
-            int historyLength = historyOffset + LinesPerPage;
-            for (int i = System.Math.Max(0, historyOffset); i < historyLength; ++i)
+            int historyStart = System.Math.Max(0, historyOffset);
+            int historyEnd = System.Math.Min(_lineHistory.Count, historyOffset + LinesPerPage);
+            for (int i = historyStart; i < historyEnd; ++i)
             {
                 DrawText(12, HeaderHeight + 3 + (i - historyOffset) * LineHeight, _lineHistory[i], s_outputColor);
             }
@@ -1270,6 +1335,7 @@ namespace SHVDN
                 }
             });
 
+            t.IsBackground = true;
             t.SetApartmentState(ApartmentState.STA);
             t.Start();
             t.Join();
@@ -1284,9 +1350,17 @@ namespace SHVDN
         {
             var t = new Thread(() =>
             {
-                Clipboard.SetText(str);
+                try
+                {
+                    Clipboard.SetText(str ?? string.Empty);
+                }
+                catch
+                {
+                    // Clipboard access can fail when another process owns it; never terminate the game for this.
+                }
             });
 
+            t.IsBackground = true;
             t.SetApartmentState(ApartmentState.STA);
             t.Start();
             t.Join();
@@ -1306,6 +1380,12 @@ namespace SHVDN
 
         private static unsafe void DrawText(float x, float y, string text, Color color, float scale = 0.35f, bool outline = false)
         {
+            text = text ?? string.Empty;
+            if (text.Length > MaxConsoleLineLength)
+            {
+                text = text.Substring(0, MaxConsoleLineLength) + "...";
+            }
+
             NativeFunc.Invoke(0x66E0276CC5F6B9DA /* SET_TEXT_FONT */, 0); // Chalet London :>
             NativeFunc.Invoke(0x07C837F9A01C34C9 /* SET_TEXT_SCALE */, scale, scale);
             if (outline)
@@ -1331,11 +1411,18 @@ namespace SHVDN
 
         private static unsafe float GetTextLength(string text)
         {
+            text = text ?? string.Empty;
+            if (text.Length > MaxInputLength)
+            {
+                text = text.Substring(0, MaxInputLength);
+            }
+
             NativeFunc.Invoke(0x66E0276CC5F6B9DA /* SET_TEXT_FONT */, 0);
             NativeFunc.Invoke(0x07C837F9A01C34C9 /* SET_TEXT_SCALE */, 0.35f, 0.35f);
             NativeFunc.Invoke(0x54CE8AC98E120CAB /* BEGIN_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT */, NativeMemory.CellEmailBcon);
             NativeFunc.PushLongString(text, 98); // 99 byte string chunks don't process properly in END_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT
-            return *(float*)NativeFunc.Invoke(0x85F061DA64ED2F67 /* END_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT */, true);
+            ulong* result = NativeFunc.Invoke(0x85F061DA64ED2F67 /* END_TEXT_COMMAND_GET_SCREEN_WIDTH_OF_DISPLAY_TEXT */, true);
+            return result == null ? 0.0f : *(float*)result;
         }
 
         private static float GetMarginLength()
