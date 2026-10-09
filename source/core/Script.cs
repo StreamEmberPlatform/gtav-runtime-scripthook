@@ -96,6 +96,8 @@ namespace SHVDN
 
         internal CheapThreadSafeStopwatch StopwatchForTimeout => _stopwatch;
 
+        internal bool IsCurrentThread => Thread == System.Threading.Thread.CurrentThread;
+
         private Thread Thread
         {
             get

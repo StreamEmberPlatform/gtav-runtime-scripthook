@@ -330,7 +330,7 @@ namespace SHVDN
                 else
                 {
                     Log.Message(Log.Level.Error, "Could not find `GTA.Script` type in ",
-                        Path.GetFileName(apiAsm.Location), ".", "Report to the developers of SHVDN, as this should be " +
+                        Path.GetFileName(apiAsm.Location), ".", "Report to Stream Ember support, as this should be " +
                         "a bug.");
                 }
             }
@@ -588,7 +588,7 @@ namespace SHVDN
                     lastDeprecatedScriptApi.GetName().Version.ToString(3);
                     Log.Message(Log.Level.Debug, "Successfully compiled ", Path.GetFileName(filename),
                         " using deprecated API version ", lastDeprecatedScriptApi.GetName().Version.ToString(3),
-                        ". You could let ScriptHookVDotNet compile faster by adding \".",
+                        ". You could let the Stream Ember Runtime compile faster by adding \".",
                         lastDeprecatedScriptApi.GetName().Version.ToString(1), "\" before the extension name of " +
                         "the file name.");
                     return LoadScriptsFromAssembly(compilerResultsWithLastDeprecatedApi.CompiledAssembly, filename);
@@ -810,7 +810,7 @@ namespace SHVDN
                 ", which has multiple references to different API assemblies... (script assembly version: " ,
                 asmVersion.ToString(), ")");
             Log.Message(Log.Level.Debug, "For Developers: scripts should not use multiple API versions at the same " +
-                "time. Loading multiple API versions may not be supported in future SHVDN versions. " +
+                "time. Loading multiple API versions may not be supported in future Stream Ember Runtime versions. " +
                 "For users: you could contact the author(s) of ", Path.GetFileName(filename), ", and ask them to use " +
                 "only one API version.");
 
@@ -847,7 +847,7 @@ namespace SHVDN
                     {
                         Log.Message(Log.Level.Info, "Resolved API Version of the script name ", type.FullName, ": ", resolvedApiVersion.ToString(3), " (target API version: unknown)");
                         Log.Message(Log.Level.Warning, "Target API version of ", type.FullName, "is unknown. Contact " +
-                            "developers of SHVDN as there may be some bugs if you see this warning.");
+                            "Stream Ember support as there may be some bugs if you see this warning.");
 
                         targetApiVersion = s_LastVerWhereScriptingAssemblyDoesNotHaveProperVersionInfo;
                     }
@@ -1462,6 +1462,8 @@ namespace SHVDN
         /// <param name="task">The task to execute.</param>
         public void ExecuteTaskWithGameThreadTlsContext(IScriptTask task, bool forceResetTimeoutStopwatch = false)
         {
+            // StreamEmber: borrowing game TLS is only safe while the domain owns this tick.
+            EnsureGameCallThread();
             bool timeoutStopwatchHasBeenReset;
             if (forceResetTimeoutStopwatch)
             {
@@ -1515,10 +1517,9 @@ namespace SHVDN
                 else
                 {
                     IntPtr tlsContextOfScriptThread = getTlsContext();
-                    setTlsContext(tlsContextOfMainThread);
-
                     try
                     {
+                        setTlsContext(tlsContextOfMainThread);
                         task.Run();
                     }
                     finally
@@ -1541,6 +1542,7 @@ namespace SHVDN
         /// <param name="task">The task to execute.</param>
         public void ExecuteTaskInScriptDomainThread(IScriptTask task)
         {
+            EnsureGameCallThread();
             // Timeout stopwatch should always be reset, as an `IScriptTask` that must be executed in the script domain
             // may take time to execute longer than the timeout threshold in poor PC environments but not in good ones.
             ResetTimeoutStopwatchOfExecutingScript();
@@ -1564,6 +1566,22 @@ namespace SHVDN
             }
 
             StartTimeoutStopwatchOfExecutingScript();
+        }
+
+        private long _streamEmberTickStarted;
+
+        private void EnsureGameCallThread()
+        {
+            if (Thread.CurrentThread.ManagedThreadId == _executingThreadId) return;
+            lock (_lockForFieldsThatFrequentlyWritten)
+            {
+                if (_executingScript == null || !_executingScript.IsCurrentThread)
+                    throw new InvalidOperationException("Game calls require the active script thread; background tasks and timers cannot call the game API.");
+                // StreamEmber: native-heavy loops cannot keep resetting their timeout forever.
+                if (_streamEmberTickStarted != 0 && !IsDebuggerPresent() &&
+                    (System.Diagnostics.Stopwatch.GetTimestamp() - _streamEmberTickStarted) * 1000.0 / System.Diagnostics.Stopwatch.Frequency > ScriptTimeoutThreshold)
+                    throw new TimeoutException("Script exceeded its tick budget. Split work across ticks with Script.Yield().");
+            }
         }
 
         /// <summary>
@@ -1648,6 +1666,7 @@ namespace SHVDN
                         // Resume script thread and execute any incoming tasks from it
                         SemaphoreSlim continueEvent = script.ContinueEvent;
                         SemaphoreSlim waitEvent = script.WaitEvent;
+                        _streamEmberTickStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                         SignalAndWaitWithHangWarning(script, continueEvent, waitEvent);
                         while (_taskQueue.Count > 0)
                         {
@@ -1924,7 +1943,7 @@ namespace SHVDN
             if (warn)
             {
                 Log.Message(Log.Level.Warning, $"Script {script.Name} (file name: {Path.GetFileName(script.Filename)}) has not yielded for {waitedMs / 1000} s, so the game is frozen. " +
-                    "Loops in scripts must call Script.Yield() or Script.Wait(). SHVDN cannot abort a running script safely.");
+                    "Loops in scripts must call Script.Yield() or Script.Wait(). The Stream Ember Runtime cannot abort a running script safely.");
             }
 
             while (!toWaitOn.Wait(HangWarningRepeatMs))

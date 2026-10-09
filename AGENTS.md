@@ -1,4 +1,4 @@
-# StreamEmber Runtime (GTA V) — ajan notları
+# Stream Ember Runtime (GTA V) — ajan notları
 
 - Önce `README.md`. Bu repo SHVDN'in fork'udur; upstream dosyalarını gerekmedikçe değiştirme, değiştirdiğin yeri
   `StreamEmber:` yorumuyla işaretle (upstream birleştirmeleri kolay kalsın).

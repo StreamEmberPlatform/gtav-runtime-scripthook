@@ -6552,7 +6552,7 @@ namespace SHVDN
         internal static void ThrowGameFunctionNotFound(string memberName)
         {
             throw new InvalidOperationException(
-                $"SHVDN could not find the game memory required by '{memberName}' in this game version " +
+                $"Stream Ember Runtime could not find the game memory required by '{memberName}' in this game version " +
                 $"(game version id: {GetGameVersion()}). The memory pattern was not found, so the call was blocked " +
                 "to avoid crashing the game.");
         }

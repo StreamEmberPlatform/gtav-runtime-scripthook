@@ -29,17 +29,17 @@
     <FileVersion>$(SE_FILE_VERSION)</FileVersion>
     <Version>$(SE_VERSION)</Version>
     <InformationalVersion>$(SE_VERSION)</InformationalVersion>
-    <Authors>crosire &amp; kagikn &amp; contributors; Stream Ember Platform</Authors>
+    <Authors>Amiral Router</Authors>
     <AssemblyTitle>StreamEmber Scripting API (GTA V)</AssemblyTitle>
-    <Product>StreamEmber Runtime</Product>
-    <Company>Stream Ember Platform</Company>
+    <Product>Stream Ember Runtime</Product>
+    <Company>Stream Ember</Company>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <RepositoryUrl>https://github.com/scripthookvdotnet/scripthookvdotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/scripthookvdotnet/scripthookvdotnet/releases</PackageReleaseNotes>
     <Description>StreamEmber scripting API for GTA V (based on the ScriptHookVDotNet v3 API)</Description>
-    <Copyright>Copyright © 2015 crosire &amp; kagikn</Copyright>
+    <Copyright>Copyright © 2026 Stream Ember - Amiral Router</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

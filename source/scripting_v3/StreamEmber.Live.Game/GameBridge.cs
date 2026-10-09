@@ -24,12 +24,12 @@ namespace StreamEmber.Live.Internal
         /// <summary>GET_CURRENT_LANGUAGE (0 English … 12 Simplified Chinese). Script thread.</summary>
         public static int LanguageId() => (int)GTA.Game.Language;
 
-        /// <summary>Feed notification. Script thread.</summary>
-        public static void Notify(string message) =>
-            GTA.UI.Notification.PostTicker("StreamEmber: " + Plain(message), false);
+        /// <summary>System message: F4 console + small bottom-left status line (warning = orange, error = red). Script thread.</summary>
+        public static void Notify(string message, LiveLogLevel level = LiveLogLevel.Info) =>
+            SHVDN.Console.Status(level == LiveLogLevel.Error ? 3 : level == LiveLogLevel.Warning ? 2 : 0, message);
 
-        /// <summary>Short on-screen line for an incoming action. Script thread.</summary>
-        public static void Announce(string message) => GTA.UI.Screen.ShowSubtitle(Plain(message), 2500);
+        /// <summary>Incoming live action: F4 console + bottom-left status line instead of a large subtitle. Script thread.</summary>
+        public static void Announce(string message) => SHVDN.Console.Status(1, message);
 
         public static void Log(LiveLogLevel level, string message)
         {
@@ -43,8 +43,5 @@ namespace StreamEmber.Live.Internal
             }
             SHVDN.Log.Message(mapped, message);
         }
-
-        /// <summary>Viewer names must not inject GTA text formatting (~r~, ~n~ …).</summary>
-        private static string Plain(string text) => (text ?? string.Empty).Replace("~", string.Empty);
     }
 }

@@ -1,6 +1,6 @@
-# StreamEmber Runtime (GTA V) — SHVDN'de olmayan API'ler
+# Stream Ember Runtime (GTA V) — SHVDN'de olmayan API'ler
 
-Bu sayfa, StreamEmber Runtime'ın SHVDN v3 API'sine eklediği oyun mekaniklerini listeler. Hepsi **ChaosModV 2.2.1**
+Bu sayfa, Stream Ember Runtime'ın SHVDN v3 API'sine eklediği oyun mekaniklerini listeler. Hepsi **ChaosModV 2.2.1**
 (C++, GPL-3.0) kaynağı incelenerek bulundu: kaos modunun `Memory/*.h` ve `Memory/Hooks/*` dosyalarındaki desenler,
 ofsetler ve oyun fonksiyonları. Kod StreamEmber'in kendi C# yazımıdır; desen/ofset bilgisinin kaynakları:
 ChaosModV, Menyoo (kar), CitizenFX (2D çizgi), Rainbomizer (script programı, crSkeleton).

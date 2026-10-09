@@ -6,6 +6,11 @@ using SHVDN;
 
 unsafe class LinuxCodeMemory : INativeCodeMemory
 {
+    public bool ReplaceCode(byte* address, byte[] expected, byte[] bytes)
+    {
+        for (int i = 0; i < expected.Length; i++) if (address[i] != expected[i]) return false;
+        return WriteCode(address, bytes);
+    }
     [DllImport("libc", SetLastError = true)] static extern IntPtr mmap(IntPtr a, UIntPtr len, int prot, int flags, int fd, IntPtr off);
     [DllImport("libc", SetLastError = true)] static extern int mprotect(IntPtr a, UIntPtr len, int prot);
     byte* _page; int _used;

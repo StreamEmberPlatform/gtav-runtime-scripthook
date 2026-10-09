@@ -112,20 +112,15 @@ namespace SHVDN
                 return false;
             }
 
-            if (!VirtualProtect((IntPtr)address, (UIntPtr)(uint)bytes.Length, PageExecuteReadWrite, out uint old))
-            {
-                return false;
-            }
-
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                address[i] = bytes[i];
-            }
-
-            VirtualProtect((IntPtr)address, (UIntPtr)(uint)bytes.Length, old, out _);
-            FlushInstructionCache(GetCurrentProcess(), (IntPtr)address, (UIntPtr)(uint)bytes.Length);
-            return true;
+            return ReplaceCode(address, Read(address, bytes.Length), bytes);
         }
+
+        [DllImport(StreamEmberLayout.RuntimeAssemblyName + ".asi", CallingConvention = CallingConvention.Cdecl)]
+        private static extern bool SE_ReplaceCode(byte* address, byte[] expected, byte[] replacement, int size);
+
+        internal static bool ReplaceCode(byte* address, byte[] expected, byte[] bytes)
+            => address != null && expected != null && bytes != null && expected.Length == bytes.Length &&
+               SE_ReplaceCode(address, expected, bytes, bytes.Length);
 
         internal static byte[] Read(byte* address, int count)
         {
@@ -144,6 +139,7 @@ namespace SHVDN
             public byte* Address;
             public byte[] Original;
             public bool Applied;
+            private byte[] _installed;
 
             public bool Apply(byte[] bytes)
             {
@@ -157,8 +153,9 @@ namespace SHVDN
                     Original = Read(Address, bytes.Length);
                 }
 
-                if (WriteProtected(Address, bytes))
+                if (ReplaceCode(Address, Applied ? _installed : Original, bytes))
                 {
+                    _installed = (byte[])bytes.Clone();
                     Applied = true;
                     EnsureUnloadHook();
                     return true;
@@ -171,7 +168,7 @@ namespace SHVDN
             {
                 if (Applied && Original != null)
                 {
-                    WriteProtected(Address, Original);
+                    if (!ReplaceCode(Address, _installed, Original)) return;
                 }
 
                 Applied = false;

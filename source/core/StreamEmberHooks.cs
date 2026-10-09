@@ -46,6 +46,8 @@ namespace SHVDN
 
         private sealed class WindowsCodeMemory : INativeCodeMemory
         {
+            public bool ReplaceCode(byte* address, byte[] expected, byte[] bytes)
+                => StreamEmberMemory.ReplaceCode(address, expected, bytes);
             private byte* _page;
             private int _used;
             private const int PageSize = 0x1000;

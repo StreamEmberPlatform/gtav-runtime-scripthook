@@ -25,17 +25,17 @@
     <Version>2.11.6</Version>
     <FileVersion>2.11.6</FileVersion>
     <AssemblyVersion>2.11.6</AssemblyVersion>
-    <Authors>crosire &amp; kagikn &amp; contributors</Authors>
+    <Authors>Amiral Router</Authors>
     <AssemblyTitle>ScriptHookVDotNet v2 API</AssemblyTitle>
     <Product>ScriptHookVDotNet</Product>
-    <Company></Company>
+    <Company>Stream Ember</Company>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <RepositoryUrl>https://github.com/scripthookvdotnet/scripthookvdotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/scripthookvdotnet/scripthookvdotnet/releases</PackageReleaseNotes>
     <Description>ScriptHookVDotNet v2 API</Description>
-    <Copyright>Copyright © 2015 crosire &amp; kagikn</Copyright>
+    <Copyright>Copyright © 2026 Stream Ember - Amiral Router</Copyright>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
   </PropertyGroup>

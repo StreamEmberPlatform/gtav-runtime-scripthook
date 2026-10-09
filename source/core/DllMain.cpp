@@ -79,11 +79,11 @@ public:
             return;
         }
 
-        console->PrintInfo("~c~--- Help ---");
+        console->PrintInfo("~y~Help~c~ | Stream Ember Runtime Console");
         console->PrintInfo("The console accepts ~h~C# expressions~h~ as input and has full access to the scripting API. To print the result of an expression, simply add \"return\" in front of it.");
         console->PrintInfo("You can use \"P\" as a shortcut for the player character and \"V\" for the current vehicle (without the quotes).");
         console->PrintInfo("Example: \"return P.IsInVehicle()\" will print a boolean value indicating whether the player is currently sitting in a vehicle to the console.");
-        console->PrintInfo("~c~--- Commands ---");
+        console->PrintInfo("~y~Commands");
         console->PrintHelpText();
     }
     [SHVDN::ConsoleCommand("Print the help for a specific command")]
@@ -212,7 +212,7 @@ public:
             return;
         }
 
-        console->PrintInfo("~c~--- Loaded Scripts ---");
+        console->PrintInfo("~y~Loaded scripts");
         for each (auto script in domain->RunningScripts)
             console->PrintInfo(IO::Path::GetFileName(script->Filename) + " ~h~" + script->Name + (script->IsRunning ? (script->IsPaused ? " ~o~[paused]" : " ~g~[running]") : " ~r~[aborted]"));
     }
@@ -262,8 +262,8 @@ internal:
         SHVDN::Log::WriteToFile(SHVDN::Log::Level::Error,
             String::Format(
                 "Could not execute the console command \"{0}\". The console is not loaded. " +
-                "You could report this error to the ScriptHookVDotNet's GitHub repository as the error can be " +
-                "responsible to ScriptHookVDotNet's implementation.",
+                "Please report this error to Stream Ember support as the error can be " +
+                "caused by the Stream Ember Runtime.",
                 commandName
             )
         );
@@ -635,8 +635,8 @@ static void ScriptHookVDotNet_ManagedInit()
         console->CommandHistory = stashedConsoleCommandHistory;
 
         // Print welcome message
-        console->PrintInfo(String::Concat("~c~--- StreamEmber Runtime (GTA V) ", SHVDN::StreamEmberLayout::ProductVersion, " ---"));
-        console->PrintInfo("~c~--- Type \"Help()\" to print an overview of available commands ---");
+        console->PrintInfo(String::Concat("~y~Stream Ember~w~ Runtime for GTA V ~c~v", SHVDN::StreamEmberLayout::ProductVersion, "  |  developed by Amiral Router | Stream Ember"));
+        console->PrintInfo("~c~Type ~w~Help()~c~ for the command overview.");
 
         ScriptHookVDotNet::SendPendingMessagesToConsole(console, pendingLogMessageInfo);
 
@@ -990,7 +990,7 @@ static void WriteUnsupportedGameLogLine(HMODULE hModule)
         return;
     }
 
-    const char message[] = "[ERROR] StreamEmber Runtime is disabled: GTA V Enhanced (GTA5_Enhanced.exe) is not supported. "
+    const char message[] = "[ERROR] Stream Ember Runtime is disabled: GTA V Enhanced (GTA5_Enhanced.exe) is not supported. "
         "Use GTA V Legacy (GTA5.exe).\r\n";
     DWORD written = 0;
     WriteFile(file, message, sizeof(message) - 1, &written, NULL);

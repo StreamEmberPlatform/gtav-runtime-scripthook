@@ -21,6 +21,8 @@ namespace StreamEmber.Live.Internal
     {
         private const int RememberedIds = 4096;
         private const int ActionsPerTick = 25;
+        private const int MaxPendingActions = 2048;
+        private static int _overflowCount;
 
         private static readonly object Gate = new object();
         private static readonly List<LiveScript> Registered = new List<LiveScript>();
@@ -89,7 +91,7 @@ namespace StreamEmber.Live.Internal
             if (Active.Count == 0 || script != Active[0]) return;
 
             LiveLog.Flush();
-            while (MainThread.TryDequeue(out Action work))
+            for (int budget = 0; budget < 32 && MainThread.TryDequeue(out Action work); budget++)
             {
                 try
                 {
@@ -167,7 +169,7 @@ namespace StreamEmber.Live.Internal
                     _disabled = true;
                     LiveLog.Error("LiveModule '" + _config.Module + "' is not installed. Installed: "
                                   + string.Join(", ", scripts.Select(s => s.Manifest.Code).Distinct()));
-                    GameBridge.Notify("'" + _config.Module + "' modülü yüklü değil");
+                    GameBridge.Notify("'" + _config.Module + "' modülü yüklü değil", LiveLogLevel.Error);
                     return;
                 }
             }
@@ -281,7 +283,7 @@ namespace StreamEmber.Live.Internal
                                  + "). Retrying every " + _config.PresenceSeconds + " s.");
                     GameBridge.Notify(offline
                         ? "Canlı aksiyonlar için StreamEmber Launcher'ı aç ve giriş yap"
-                        : "Canlı aksiyonlar için Launcher'da giriş yap");
+                        : "Canlı aksiyonlar için Launcher'da giriş yap", offline ? LiveLogLevel.Error : LiveLogLevel.Warning);
                 }
                 return;
             }
@@ -377,6 +379,7 @@ namespace StreamEmber.Live.Internal
             _warnedNoToken = true;
             LiveLog.Warn("No runtime token (" + identity.TokenProblem + "): presence and other EventFabric writes are skipped. "
                          + "Live actions still arrive.");
+            GameBridge.Notify("Launcher yetki doğrulaması başarısız (" + identity.TokenProblem + "); aksiyonlar gelir, yazma kapalı", LiveLogLevel.Warning);
         }
 
         // ─── Settings ───────────────────────────────────────────────────────
@@ -486,11 +489,19 @@ namespace StreamEmber.Live.Internal
             if (id.Length == 0) return;
             lock (Seen)
             {
-                if (!Seen.Add(id)) return;
+                if (Seen.Contains(id)) return;
+                // StreamEmber: bound replay/event bursts; keep accepted actions in FIFO order.
+                if (Incoming.Count >= MaxPendingActions)
+                {
+                    if (++_overflowCount == 1 || _overflowCount % 100 == 0)
+                        LiveLog.Warn("Live action queue full; rejected " + _overflowCount + " action(s). Reduce event rate.");
+                    return;
+                }
+                Seen.Add(id);
                 SeenOrder.Enqueue(id);
                 while (SeenOrder.Count > RememberedIds) Seen.Remove(SeenOrder.Dequeue());
+                Incoming.Enqueue(json);
             }
-            Incoming.Enqueue(json);
         }
 
         /// <summary>Script thread.</summary>
@@ -567,7 +578,7 @@ namespace StreamEmber.Live.Internal
             }
             else if (index == 11)
             {
-                ResetGCore(ok => GameBridge.Notify(ok ? "GCore sıfırlandı" : "GCore sıfırlanamadı"));
+                ResetGCore(ok => GameBridge.Notify(ok ? "GCore sıfırlandı" : "GCore sıfırlanamadı", ok ? LiveLogLevel.Info : LiveLogLevel.Error));
             }
         }
 

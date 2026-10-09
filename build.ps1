@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    StreamEmber Runtime (GTA V): build, package and (optionally) install.
+    Stream Ember Runtime (GTA V): build, package and (optionally) install.
 
 .DESCRIPTION
     1. Version: VERSION (major.minor) + commits since it changed = patch (tools/StreamEmber.Build.psm1).
@@ -46,7 +46,7 @@ $Conflicts = @('ScriptHookVDotNet.asi')
 $Preserve = @('StreamEmber/Config/Runtime.ini')
 
 if (-not $Version) { $Version = Get-SEVersion -RepositoryRoot $Root -Kind Dev }
-Write-Host "StreamEmber Runtime (GTA V) $Version" -ForegroundColor Cyan
+Write-Host "Stream Ember Runtime (GTA V) $Version" -ForegroundColor Cyan
 
 # --- Build ------------------------------------------------------------------------------------------------------
 $msbuild = Find-SEMSBuild
@@ -73,7 +73,7 @@ Copy-Item (Join-Path $Root 'LICENSE.txt') $licenseDir
 Copy-Item (Join-Path $Root 'COPYRIGHT.md') (Join-Path $licenseDir 'COPYRIGHT.txt')
 Copy-Item (Join-Path $Root 'THIRD-PARTY-NOTICES.md') (Join-Path $licenseDir 'THIRD-PARTY-NOTICES.txt')
 
-New-SEManifest -StageDirectory $stage -Id $Id -Name 'StreamEmber Runtime (GTA V)' -Version $Version -Game $Game `
+New-SEManifest -StageDirectory $stage -Id $Id -Name 'Stream Ember Runtime (GTA V)' -Version $Version -Game $Game `
     -Preserve $Preserve -Conflicts $Conflicts -RepositoryRoot $Root `
     -Requires @([ordered]@{ file = 'ScriptHookV.dll'; name = 'Script Hook V (Alexander Blade)'; url = 'http://www.dev-c.com/gtav/scripthookv/' },
                 [ordered]@{ file = 'dinput8.dll'; name = 'ASI Loader (Script Hook V package)'; url = 'http://www.dev-c.com/gtav/scripthookv/' }) | Out-Null

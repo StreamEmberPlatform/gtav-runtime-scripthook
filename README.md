@@ -1,4 +1,4 @@
-# StreamEmber Runtime (GTA V)
+# Stream Ember Runtime (GTA V)
 
 Grand Theft Auto V (Legacy) için StreamEmber'in .NET script çalışma ortamı. Oyunun içinde .NET Framework 4.8'i başlatır,
 `StreamEmber\Scripts\` klasöründeki scriptleri yükler ve onlara `StreamEmber.Scripting.GTAV` API'sini verir.

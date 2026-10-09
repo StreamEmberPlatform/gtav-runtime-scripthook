@@ -26,6 +26,7 @@ namespace SHVDN
 
         /// <summary>Writes bytes to code memory (changing the protection around the write).</summary>
         bool WriteCode(byte* address, byte[] bytes);
+        bool ReplaceCode(byte* address, byte[] expected, byte[] bytes);
     }
 
     /// <summary>Byte emitter with labels and short / near jump fix-ups.</summary>
@@ -219,6 +220,7 @@ namespace SHVDN
 
         private readonly INativeCodeMemory _memory;
         private readonly byte[] _original;
+        private byte[] _installed;
 
         public byte* Target { get; }
 
@@ -268,8 +270,8 @@ namespace SHVDN
             return new NativeDetour(memory, target, trampoline, original);
         }
 
-        /// <summary>Points the target at <paramref name="detour"/>. The first two bytes become a self-loop while
-        /// the rest is written, so a thread entering meanwhile waits instead of running half-written code.</summary>
+        /// <summary>Points the target at <paramref name="detour"/> using the platform's guarded replacement transaction.
+        /// Refuses to overwrite another mod's bytes or a prologue currently being executed.</summary>
         public bool Install(byte* detour)
         {
             if (Installed)
@@ -285,11 +287,12 @@ namespace SHVDN
                 patch[i] = 0x90;
             }
 
-            if (!WriteGuarded(patch))
+            if (!_memory.ReplaceCode(Target, _original, patch))
             {
                 return false;
             }
 
+            _installed = patch;
             Installed = true;
             return true;
         }
@@ -302,28 +305,13 @@ namespace SHVDN
                 return true;
             }
 
-            if (!WriteGuarded(_original))
+            if (!_memory.ReplaceCode(Target, _installed, _original))
             {
                 return false;
             }
 
             Installed = false;
             return true;
-        }
-
-        private bool WriteGuarded(byte[] bytes)
-        {
-            // jmp $ (EB FE) first, then the tail, then the real first two bytes
-            if (!_memory.WriteCode(Target, new byte[] { 0xEB, 0xFE }))
-            {
-                return false;
-            }
-
-            byte[] tail = new byte[bytes.Length - 2];
-            Array.Copy(bytes, 2, tail, 0, tail.Length);
-            bool ok = tail.Length == 0 || _memory.WriteCode(Target + 2, tail);
-            ok &= _memory.WriteCode(Target, new[] { bytes[0], bytes[1] });
-            return ok;
         }
 
         private static byte[] Copy(byte* p, int count)
